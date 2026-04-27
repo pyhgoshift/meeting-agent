@@ -1,0 +1,52 @@
+﻿{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch",
+      "Read(**)",
+      "Edit(src/**)",
+      "Edit(*.md)",
+      "Edit(*.json)",
+      "Edit(*.ts)",
+      "Edit(*.tsx)",
+      "Edit(*.js)",
+      "Edit(.claude/**)",
+      "Edit(.env.example)",
+      "Bash(npm *)",
+      "Bash(pnpm *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git checkout*)",
+      "Bash(git worktree*)",
+      "Bash(node *)",
+      "Bash(npx *)",
+      "Bash(ls*)",
+      "Bash(dir*)",
+      "Bash(cd *)",
+      "Bash(mkdir*)",
+      "Bash(cat*)",
+      "Bash(type *)",
+      "Bash(echo *)"
+    ],
+    "ask": [
+      "Bash(git push*)",
+      "Bash(npm publish*)",
+      "Bash(pnpm publish*)",
+      "Edit(.claude/settings.json)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Edit(./migrations/**)",
+      "Bash(rm -rf*)",
+      "Bash(rmdir /s*)",
+      "Bash(del /s*)",
+      "Bash(format*)"
+    ]
+  }
+}
