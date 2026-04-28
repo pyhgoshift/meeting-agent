@@ -8,6 +8,7 @@
     "transcribe": "tsx src/transcribe/test.ts",
     "analyze": "tsx src/extract/test.ts",
     "run:pipeline": "tsx src/pipeline.ts",
+    "watch": "tsx src/watcher.ts",
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -17,6 +18,7 @@
   "dependencies": {
     "@notionhq/client": "^5.20.0",
     "@slack/web-api": "^7.15.1",
+    "chokidar": "^5.0.0",
     "dotenv": "^17.4.2",
     "groq-sdk": "^1.1.2",
     "openai": "^6.34.0",
