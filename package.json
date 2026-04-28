@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "transcribe": "tsx src/transcribe/test.ts",
+    "analyze": "tsx src/extract/test.ts",
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -15,7 +16,8 @@
   "dependencies": {
     "dotenv": "^17.4.2",
     "groq-sdk": "^1.1.2",
-    "openai": "^6.34.0"
+    "openai": "^6.34.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
