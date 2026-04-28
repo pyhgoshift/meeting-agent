@@ -7,6 +7,7 @@
   "scripts": {
     "transcribe": "tsx src/transcribe/test.ts",
     "analyze": "tsx src/extract/test.ts",
+    "run:pipeline": "tsx src/pipeline.ts",
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -14,6 +15,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@slack/web-api": "^7.15.1",
     "dotenv": "^17.4.2",
     "groq-sdk": "^1.1.2",
     "openai": "^6.34.0",
