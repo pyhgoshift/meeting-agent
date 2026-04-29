@@ -13,3 +13,15 @@ coverage/
 data/meetings/
 *.tmp
 *.swp
+
+# 오디오 파일 (테스트용 포함)
+*.mp3
+*.m4a
+*.wav
+*.ogg
+*.flac
+*.aac
+*.opus
+
+# 작업 메모
+*.txt

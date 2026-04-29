@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  meeting-agent:
+    image: meeting-agent:latest
+    container_name: meeting-agent
+    restart: always
+    volumes:
+      - /volume1/homes/freudpark/recording:/recordings:ro  # 읽기 전용 마운트
+    env_file:
+      - .env
+    environment:
+      - WATCH_DIR=/recordings
+      - TZ=Asia/Seoul
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
