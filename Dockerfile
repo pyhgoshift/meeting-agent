@@ -5,7 +5,7 @@ WORKDIR /app
 
 # 의존성 먼저 복사 (레이어 캐시 활용)
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci
 
 # 소스 복사 후 TypeScript 컴파일
 COPY tsconfig.json ./
