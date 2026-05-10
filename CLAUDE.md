@@ -1,3 +1,17 @@
+## MCP 서버
+
+### financial-datasets (금융 데이터)
+- URL: http://mcp.financialdatasets.ai
+- 등록: `claude mcp add --transport http financial-datasets http://mcp.financialdatasets.ai`
+- 환경변수: `FINANCIAL_DATASETS_API_KEY` (선택), `FINANCIAL_DATASETS_MCP_URL` (기본값 사용 가능)
+- 용도: 회의에서 주식 티커/금융 키워드 감지 시 실시간 주가·재무 데이터 보강
+- 코드 위치:
+  - 클라이언트: `src/llm/providers/financial-datasets.ts`
+  - 보강 로직: `src/extract/financial-enricher.ts`
+- 동작: 분석 결과에 금융 키워드가 없으면 자동으로 건너뜀 (비용 0)
+
+---
+
 ## 기술 스택 결정 (Decision Log)
 
 ### 음성 → 텍스트: Groq Whisper
