@@ -22,8 +22,8 @@ mkdir -p "$RECORDING_DIR"
 # 2. 코드 가져오기
 echo "[2/5] 코드 다운로드..."
 if [ -d "$DEPLOY_DIR/.git" ]; then
-  echo "      기존 레포 업데이트 (git pull)"
-  cd "$DEPLOY_DIR" && git pull
+  echo "      기존 레포 업데이트 (git fetch & reset)"
+  cd "$DEPLOY_DIR" && git fetch --all && git reset --hard origin/master
 else
   echo "      신규 클론"
   git clone "$REPO_URL" "$DEPLOY_DIR"
