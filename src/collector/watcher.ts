@@ -30,7 +30,7 @@ export function startWatcher(
       stabilityThreshold: 3000,  // 3초간 변경 없으면 완료로 판단
       pollInterval: 500,
     },
-    depth: 0,                    // 하위 폴더 미감시
+    ignored: /(^|[\/\\])\../,     // .archive 등 숨김 폴더/파일 무시
   });
 
   watcher.on('add', (filePath: string) => {
