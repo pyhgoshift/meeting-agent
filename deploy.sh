@@ -7,7 +7,7 @@
 
 set -e
 
-REPO_URL="https://github.com/YOUR_GITHUB_USERNAME/meeting-agent.git"
+REPO_URL="https://github.com/pyhgoshift/meeting-agent.git"
 DEPLOY_DIR="/volume1/docker/meeting-agent"
 RECORDING_DIR="/volume1/homes/freudpark/recording"
 
