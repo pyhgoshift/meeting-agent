@@ -6,7 +6,7 @@ services:
     container_name: meeting-agent
     restart: always
     volumes:
-      - /volume1/homes/freudpark/recording:/recordings:ro  # 읽기 전용 마운트
+      - /volume1/homes/freudpark/recording:/recordings  # 자동 삭제/이동을 위해 읽기/쓰기 권한 부여
     env_file:
       - .env
     environment:
