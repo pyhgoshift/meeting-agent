@@ -5,6 +5,7 @@ import { transcribe } from './transcribe/whisper.js';
 import { analyzeMeeting } from './extract/analyzer.js';
 import { sendMeetingResult } from './distributor/slack.js';
 import { saveMeetingToNotion } from './distributor/notion.js';
+import { saveMeetingToGSheets } from './distributor/gsheets.js';
 
 const WATCH_DIR = process.env.WATCH_DIR ?? './recordings';
 
@@ -32,6 +33,20 @@ startWatcher(WATCH_DIR, async (filePath: string) => {
     console.log(`[4/4] 📝 Notion 저장 중...`);
     const notionUrl = await saveMeetingToNotion(analysis, fileName, durationSec);
     console.log(`       ✅ 완료 → ${notionUrl}`);
+
+    console.log(`[5/5] 📊 구글 시트 누적 기록 중...`);
+    await saveMeetingToGSheets(analysis, fileName);
+    console.log(`       ✅ 완료`);
+
+    // ─── 폰 용량 확보용 자동 아카이브 ───
+    const fs = await import('fs');
+    const archiveDir = path.join(WATCH_DIR, '.archive');
+    if (!fs.existsSync(archiveDir)) fs.mkdirSync(archiveDir, { recursive: true });
+    
+    const archivePath = path.join(archiveDir, fileName);
+    fs.renameSync(filePath, archivePath);
+    console.log(`[5/5] 📦 자동 아카이브 완료 (폰 용량 확보)`);
+    console.log(`       ✅ 이동됨: ${archivePath}`);
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`\n✨ 완료: ${fileName} (총 ${elapsed}초)`);
