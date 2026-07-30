@@ -4,7 +4,7 @@ import fs from 'fs';
 import PQueue from 'p-queue';
 
 // 지원 오디오 포맷
-const AUDIO_EXTENSIONS = new Set(['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.aac', '.opus']);
+const AUDIO_EXTENSIONS = new Set(['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.aac', '.opus', '.amr', '.awb', '.3gp']);
 
 // 처리 완료 파일 추적 (재처리 방지)
 const processed = new Set<string>();
@@ -26,9 +26,11 @@ export function startWatcher(
   const watcher = chokidar.watch(watchDir, {
     persistent: true,
     ignoreInitial: false,        // 시작 시 기존 파일도 처리
+    usePolling: true,            // 시놀로지 NAS inotify 버그 회피
+    interval: 3000,              // 3초마다 폴더 스캔
     awaitWriteFinish: {
       stabilityThreshold: 3000,  // 3초간 변경 없으면 완료로 판단
-      pollInterval: 500,
+      pollInterval: 1000,
     },
     ignored: /(^|[\/\\])\../,     // .archive 등 숨김 폴더/파일 무시
   });
