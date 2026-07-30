@@ -32,7 +32,7 @@ export function startWatcher(
       stabilityThreshold: 3000,  // 3초간 변경 없으면 완료로 판단
       pollInterval: 1000,
     },
-    ignored: /(^|[\/\\])\../,     // .archive 등 숨김 폴더/파일 무시
+    ignored: [/(^|[\/\\])\../, /(^|[\/\\])Call($|[\/\\])/i], // .archive 등 숨김 폴더와 Call 폴더 무시
   });
 
   watcher.on('add', (filePath: string) => {
