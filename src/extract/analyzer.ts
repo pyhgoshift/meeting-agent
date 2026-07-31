@@ -38,7 +38,19 @@ const SYSTEM_PROMPT = `당신은 회의록 분석 전문가입니다.
 }`;
 
 export async function analyzeMeeting(transcript: string, retries = 1): Promise<MeetingAnalysis> {
-  const raw = await chat(SYSTEM_PROMPT, `회의 전사본:\n${transcript}`);
+  const kst = new Date();
+  kst.setHours(kst.getHours() + 9);
+  const currentDate = kst.toISOString().split('T')[0];
+  const currentTime = kst.toISOString().split('T')[1].substring(0, 5);
+  
+  const dynamicPrompt = \`\${SYSTEM_PROMPT}
+
+[중요: 날짜 계산 기준]
+- 현재 한국 시간: \${currentDate} \${currentTime}
+- 대화에서 '내일', '다음주', '수요일' 등 상대적인 시점이 언급되면 위 기준 날짜를 바탕으로 정확한 날짜(YYYY-MM-DD)를 계산해서 넣으세요.
+- 절대로 임의의 과거/미래 날짜(예: 2025년 1월)를 지어내지 마세요. 날짜를 유추할 수 없는 경우 빈 문자열("")을 반환하세요.\`;
+
+  const raw = await chat(dynamicPrompt, \`회의 전사본:\\n\${transcript}\`);
 
   const jsonMatch = raw.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
