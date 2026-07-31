@@ -14,6 +14,7 @@ const ScheduleSchema = z.object({
 });
 
 const MeetingSchema = z.object({
+  title: z.string(),
   attendees: z.array(z.string()),
   agenda: z.string(),
   summary: z.string(),
@@ -29,6 +30,7 @@ const SYSTEM_PROMPT = `당신은 회의록 분석 전문가입니다.
 마크다운 코드블록 없이 순수 JSON만 출력하세요.
 
 {
+  "title": "회의 핵심 주제를 반영한 짧은 제목 (10자 내외)",
   "attendees": ["참석자1", "참석자2"],
   "agenda": "회의 안건 (주제)",
   "summary": "회의 전체 요약 (3~5문장 한국어)",

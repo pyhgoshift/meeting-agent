@@ -24,22 +24,63 @@ export async function sendMeetingResult(analysis: MeetingAnalysis, fileName: str
       }).join('\n')
     : '없음';
 
+  const slackTitle = analysis.title || fileName;
+  const attendees = analysis.attendees?.join(', ') || '미지정';
+  const agenda = analysis.agenda || '없음';
+
+  // 1. 외부 템플릿(slack_template.txt) 확인
+  const WATCH_DIR = process.env.WATCH_DIR ?? './recordings';
+  const fsMod = await import('fs');
+  const pathMod = await import('path');
+  const templatePath = pathMod.join(WATCH_DIR, 'slack_template.txt');
+
+  if (fsMod.existsSync(templatePath)) {
+    let template = fsMod.readFileSync(templatePath, 'utf-8');
+    
+    // 치환 (Placeholder replacement)
+    template = template
+      .replace(/\{\{title\}\}/g, slackTitle)
+      .replace(/\{\{attendees\}\}/g, attendees)
+      .replace(/\{\{agenda\}\}/g, agenda)
+      .replace(/\{\{summary\}\}/g, analysis.summary)
+      .replace(/\{\{decisions\}\}/g, decisions)
+      .replace(/\{\{todos\}\}/g, todos)
+      .replace(/\{\{schedules\}\}/g, schedules)
+      .replace(/\{\{fileName\}\}/g, fileName);
+
+    await slack.chat.postMessage({
+      channel: CHANNEL,
+      text: `회의록 분석 완료: ${slackTitle}`,
+      blocks: [
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: template },
+        }
+      ],
+    });
+    return;
+  }
+
+  // 2. 외부 템플릿이 없을 경우 기본 (Block Kit) 디자인 전송
   await slack.chat.postMessage({
     channel: CHANNEL,
-    text: `회의록 분석 완료: ${fileName}`,
+    text: `회의록 분석 완료: ${slackTitle}`,
     blocks: [
       {
         type: 'header',
-        text: { type: 'plain_text', text: `📋 회의록 분석 결과`, emoji: true },
+        text: { type: 'plain_text', text: `📋 ${slackTitle}`, emoji: true },
       },
       {
         type: 'context',
-        elements: [{ type: 'mrkdwn', text: `파일: \`${fileName}\`` }],
+        elements: [
+          { type: 'mrkdwn', text: `👥 참석자: ${attendees}` },
+          { type: 'mrkdwn', text: `🎯 안건: ${agenda}` }
+        ],
       },
       { type: 'divider' },
       {
         type: 'section',
-        text: { type: 'mrkdwn', text: `*요약*\n${analysis.summary}` },
+        text: { type: 'mrkdwn', text: `*📝 요약*\n${analysis.summary}` },
       },
       { type: 'divider' },
       {
