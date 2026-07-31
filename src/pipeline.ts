@@ -19,7 +19,13 @@ const { text, durationSec } = await transcribe(filePath);
 console.log(`      완료 (${durationSec.toFixed(1)}초)`);
 
 console.log(`[2/4] AI 분석 중... (DeepSeek)`);
-const analysis = await analyzeMeeting(text);
+let customPrompt = undefined;
+const fs = await import('fs');
+const promptPath = path.join(process.cwd(), 'meetingbot_prompt.txt');
+if (fs.existsSync(promptPath)) {
+  customPrompt = fs.readFileSync(promptPath, 'utf-8').trim();
+}
+const analysis = await analyzeMeeting(text, customPrompt);
 console.log(`      완료`);
 
 console.log(`[3/4] Slack 전송 중...`);

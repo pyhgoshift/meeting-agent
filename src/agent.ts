@@ -23,7 +23,14 @@ startWatcher(WATCH_DIR, async (filePath: string) => {
     console.log(`       ✅ 완료 (${durationSec.toFixed(1)}초 분량)`);
 
     console.log(`[2/4] 🤖 AI 분석 중... (DeepSeek)`);
-    const analysis = await analyzeMeeting(text);
+    let customPrompt = undefined;
+    const promptPath = path.join(WATCH_DIR, 'meetingbot_prompt.txt');
+    const fsMod = await import('fs');
+    if (fsMod.existsSync(promptPath)) {
+      customPrompt = fsMod.readFileSync(promptPath, 'utf-8').trim();
+      console.log(`       💡 외부 프롬프트(meetingbot_prompt.txt) 적용 완료`);
+    }
+    const analysis = await analyzeMeeting(text, customPrompt);
     console.log(`       ✅ 완료`);
 
     console.log(`[3/4] 💬 Slack 전송 중...`);
