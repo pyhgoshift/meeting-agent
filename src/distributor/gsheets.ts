@@ -43,7 +43,9 @@ export async function saveMeetingToGSheets(analysis: MeetingAnalysis, fileName: 
   }
 
   const sequence = getNextSequence();
-  const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const kst = new Date();
+  kst.setHours(kst.getHours() + 9);
+  const date = kst.toISOString().split('T')[0]; // YYYY-MM-DD (KST)
   const title = fileName; // 파일명을 제목으로 사용
 
   // 결정사항, 할일 배열을 보기 좋게 문자열로 포맷팅
