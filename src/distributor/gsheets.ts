@@ -49,21 +49,22 @@ export async function saveMeetingToGSheets(analysis: MeetingAnalysis, fileName: 
   const title = fileName; // 파일명을 제목으로 사용
 
   // 결정사항, 할일 배열을 보기 좋게 문자열로 포맷팅
+  const attendeesStr = analysis.attendees?.join(', ') || '';
+  const agendaStr = analysis.agenda || '';
   const decisionsStr = analysis.decisions.map((d, i) => `${i + 1}. ${d}`).join('\n');
-  const todosStr = analysis.todos.map(t => {
-    let str = `- ${t.task}`;
-    if (t.assignee) str += ` (담당: ${t.assignee})`;
-    if (t.due) str += ` (기한: ${t.due})`;
-    return str;
-  }).join('\n');
+  const tasksStr = analysis.todos.map(t => `- ${t.task}${t.assignee ? ` (담당: ${t.assignee})` : ''}`).join('\n');
+  const dueStr = analysis.todos.map(t => t.due || '-').join('\n');
 
   const payload = {
     sequence,
     date,
     title,
+    attendees: attendeesStr,
+    agenda: agendaStr,
     summary: analysis.summary,
     decisions: decisionsStr,
-    todos: todosStr
+    tasks: tasksStr,
+    due: dueStr
   };
 
   try {

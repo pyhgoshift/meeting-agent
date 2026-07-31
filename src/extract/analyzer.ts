@@ -14,6 +14,8 @@ const ScheduleSchema = z.object({
 });
 
 const MeetingSchema = z.object({
+  attendees: z.array(z.string()),
+  agenda: z.string(),
   summary: z.string(),
   decisions: z.array(z.string()),
   todos: z.array(TodoSchema),
@@ -27,6 +29,8 @@ const SYSTEM_PROMPT = `당신은 회의록 분석 전문가입니다.
 마크다운 코드블록 없이 순수 JSON만 출력하세요.
 
 {
+  "attendees": ["참석자1", "참석자2"],
+  "agenda": "회의 안건 (주제)",
   "summary": "회의 전체 요약 (3~5문장 한국어)",
   "decisions": ["결정사항1", "결정사항2"],
   "todos": [
