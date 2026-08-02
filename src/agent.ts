@@ -7,7 +7,8 @@ import { analyzeMeeting } from './extract/analyzer.js';
 import { sendMeetingResult } from './distributor/slack.js';
 import { saveMeetingToNotion } from './distributor/notion.js';
 import { saveMeetingToGSheets } from './distributor/gsheets.js';
-import { startServer } from './server.js';
+import { startDashboardServer } from './dashboard/server.js';
+import { appendHistoryRecord } from './dashboard/history.js';
 
 const WATCH_DIR = process.env.WATCH_DIR ?? './recordings';
 
@@ -63,11 +64,30 @@ startWatcher(WATCH_DIR, async (filePath: string) => {
     console.log(`\n✨ 완료: ${fileName} (총 ${elapsed}초)`);
     console.log('─'.repeat(50));
 
+    appendHistoryRecord(WATCH_DIR, {
+      fileName,
+      title: analysis?.title,
+      processedAt: new Date().toISOString(),
+      status: 'success',
+      durationSec: Number(elapsed)
+    });
+
   } catch (err) {
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.error(`\n❌ 오류 발생 [${fileName}]:`, (err as Error).message);
+    
+    appendHistoryRecord(WATCH_DIR, {
+      fileName,
+      processedAt: new Date().toISOString(),
+      status: 'error',
+      error: (err as Error).message,
+      durationSec: Number(elapsed)
+    });
+    
     throw err; // watcher가 재처리 허용하도록
   }
 });
 
 // 시작: 대시보드 서버 
-startServer(3000);
+const port = Number(process.env.DASHBOARD_PORT ?? 3000);
+startDashboardServer(port);

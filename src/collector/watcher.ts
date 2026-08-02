@@ -12,6 +12,30 @@ const processed = new Set<string>();
 // 동시 처리 1개로 제한 (순차 처리)
 const queue = new PQueue({ concurrency: 1 });
 
+export interface WatcherStatus {
+  ready: boolean;
+  startedAt: string | null;
+  fatalError: string | null;
+  queueSize: number;
+  queuePending: number;
+}
+
+const status: WatcherStatus = {
+  ready: false,
+  startedAt: null,
+  fatalError: null,
+  queueSize: 0,
+  queuePending: 0
+};
+
+export function getWatcherStatus(): WatcherStatus {
+  return {
+    ...status,
+    queueSize: queue.size,
+    queuePending: queue.pending
+  };
+}
+
 export function startWatcher(
   watchDir: string,
   onFile: (filePath: string) => Promise<void>,
@@ -33,6 +57,11 @@ export function startWatcher(
       pollInterval: 1000,
     },
     ignored: [/(^|[\/\\])\../, /(^|[\/\\])Call($|[\/\\])/i], // .archive 등 숨김 폴더와 Call 폴더 무시
+  });
+
+  watcher.on('ready', () => {
+    status.ready = true;
+    status.startedAt = new Date().toISOString();
   });
 
   watcher.on('add', (filePath: string) => {
@@ -57,6 +86,7 @@ export function startWatcher(
 
   watcher.on('error', (err) => {
     console.error('👁️  감시 오류:', err);
+    status.fatalError = (err as Error).message;
   });
 
   // 종료 시 정리

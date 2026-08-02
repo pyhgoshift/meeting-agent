@@ -51,6 +51,6 @@ ENV WATCH_DIR=/recordings
 
 # 헬스체크
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD node -e "console.log('ok')" || exit 1
+  CMD wget -qO- "http://127.0.0.1:${DASHBOARD_PORT:-3000}/healthz" || exit 1
 
 CMD ["node", "dist/agent.js"]

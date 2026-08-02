@@ -7,11 +7,14 @@ services:
     restart: always
     volumes:
       - /volume1/homes/freudpark/recording:/recordings  # 자동 삭제/이동을 위해 읽기/쓰기 권한 부여
+    ports:
+      - "127.0.0.1:3000:3000"
     env_file:
       - .env
     environment:
       - WATCH_DIR=/recordings
       - TZ=Asia/Seoul
+      - DASHBOARD_PORT=3000
     logging:
       driver: json-file
       options:
