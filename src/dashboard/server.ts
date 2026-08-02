@@ -42,8 +42,8 @@ export function startDashboardServer(port: number = 3000) {
     });
   }
 
-  // Bind exclusively to 127.0.0.1 (Tailscale safe) or specific env if provided
-  const host = process.env.DASHBOARD_HOST || '127.0.0.1';
+  // Bind exclusively to 0.0.0.0 inside container (Docker port mapping will handle external isolation)
+  const host = process.env.DASHBOARD_HOST || '0.0.0.0';
   
   app.listen(port, host, () => {
     console.log(`\n🚀 [Dashboard] Web UI is running on http://${host}:${port}`);
