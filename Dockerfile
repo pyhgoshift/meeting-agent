@@ -12,6 +12,12 @@ COPY tsconfig.json ./
 COPY src/ ./src/
 RUN npm run build
 
+# 대시보드 빌드
+COPY dashboard/package*.json ./dashboard/
+RUN cd dashboard && npm ci
+COPY dashboard/ ./dashboard/
+RUN cd dashboard && npm run build
+
 # ── 실행 스테이지 ─────────────────────────────────────────────────
 FROM node:22-alpine AS runner
 
@@ -27,8 +33,14 @@ RUN apk add --no-cache tzdata && \
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-# 빌드 결과물 복사
+# 백엔드 빌드 결과물 복사
 COPY --from=builder /app/dist ./dist
+
+# 프론트엔드 대시보드 결과물 복사
+COPY --from=builder /app/dashboard/dist ./dashboard/dist
+
+# 웹 포트 노출
+EXPOSE 3000
 
 # recording 폴더 마운트 포인트
 VOLUME ["/recordings"]

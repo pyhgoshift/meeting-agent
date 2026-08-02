@@ -1,13 +1,19 @@
 import 'dotenv/config';
 import path from 'path';
+import fs from 'fs';
 import { startWatcher } from './collector/watcher.js';
 import { transcribe } from './transcribe/whisper.js';
 import { analyzeMeeting } from './extract/analyzer.js';
 import { sendMeetingResult } from './distributor/slack.js';
 import { saveMeetingToNotion } from './distributor/notion.js';
 import { saveMeetingToGSheets } from './distributor/gsheets.js';
+import { startServer } from './server.js';
 
 const WATCH_DIR = process.env.WATCH_DIR ?? './recordings';
+
+if (!fs.existsSync(WATCH_DIR)) {
+  fs.mkdirSync(WATCH_DIR, { recursive: true });
+}
 
 console.log('🚀 Meeting Agent 시작');
 console.log(`📁 감시 경로: ${WATCH_DIR}`);
@@ -25,9 +31,8 @@ startWatcher(WATCH_DIR, async (filePath: string) => {
     console.log(`[2/4] 🤖 AI 분석 중... (DeepSeek)`);
     let customPrompt = undefined;
     const promptPath = path.join(WATCH_DIR, 'meetingbot_prompt.txt');
-    const fsMod = await import('fs');
-    if (fsMod.existsSync(promptPath)) {
-      customPrompt = fsMod.readFileSync(promptPath, 'utf-8').trim();
+    if (fs.existsSync(promptPath)) {
+      customPrompt = fs.readFileSync(promptPath, 'utf-8').trim();
       console.log(`       💡 외부 프롬프트(meetingbot_prompt.txt) 적용 완료`);
     }
     const analysis = await analyzeMeeting(text, customPrompt);
@@ -46,7 +51,6 @@ startWatcher(WATCH_DIR, async (filePath: string) => {
     console.log(`       ✅ 완료`);
 
     // ─── 폰 용량 확보용 자동 아카이브 ───
-    const fs = await import('fs');
     const archiveDir = path.join(WATCH_DIR, '.archive');
     if (!fs.existsSync(archiveDir)) fs.mkdirSync(archiveDir, { recursive: true });
     
@@ -64,3 +68,6 @@ startWatcher(WATCH_DIR, async (filePath: string) => {
     throw err; // watcher가 재처리 허용하도록
   }
 });
+
+// 시작: 대시보드 서버 
+startServer(3000);
