@@ -50,7 +50,7 @@ export async function sendMeetingResult(analysis: MeetingAnalysis, fileName: str
 
     await slack.chat.postMessage({
       channel: CHANNEL,
-      text: `회의록 분석 완료: ${slackTitle}`,
+      text: `<!channel> 🚨 회의록 분석 완료: ${slackTitle}`,
       blocks: [
         {
           type: 'section',
@@ -64,7 +64,7 @@ export async function sendMeetingResult(analysis: MeetingAnalysis, fileName: str
   // 2. 외부 템플릿이 없을 경우 기본 (Block Kit) 디자인 전송
   await slack.chat.postMessage({
     channel: CHANNEL,
-    text: `회의록 분석 완료: ${slackTitle}`,
+    text: `<!channel> 🚨 회의록 분석 완료: ${slackTitle}`,
     blocks: [
       {
         type: 'header',
