@@ -57,7 +57,7 @@ docker rm meeting-agent 2>/dev/null || true
 docker run -d \
   --name meeting-agent \
   --restart always \
-  -p 3000:3000 \
+  --network host \
   -v "$RECORDING_DIR":/recordings \
   --env-file "$DEPLOY_DIR/.env" \
   meeting-agent:latest
