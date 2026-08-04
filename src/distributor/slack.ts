@@ -54,6 +54,10 @@ export async function sendMeetingResult(analysis: MeetingAnalysis, fileName: str
       blocks: [
         {
           type: 'section',
+          text: { type: 'mrkdwn', text: '<!channel> 🚨 새로운 회의록 분석이 완료되었습니다!' },
+        },
+        {
+          type: 'section',
           text: { type: 'mrkdwn', text: template },
         }
       ],
@@ -66,6 +70,10 @@ export async function sendMeetingResult(analysis: MeetingAnalysis, fileName: str
     channel: CHANNEL,
     text: `<!channel> 🚨 회의록 분석 완료: ${slackTitle}`,
     blocks: [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: '<!channel> 🚨 새로운 회의록 분석이 완료되었습니다!' },
+      },
       {
         type: 'header',
         text: { type: 'plain_text', text: `📋 ${slackTitle}`, emoji: true },
