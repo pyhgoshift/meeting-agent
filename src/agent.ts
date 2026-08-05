@@ -4,6 +4,7 @@ import fs from 'fs';
 import { startWatcher } from './collector/watcher.js';
 import { transcribe } from './transcribe/whisper.js';
 import { analyzeMeeting } from './extract/analyzer.js';
+import { enrichWithFinancialData } from './extract/financial-enricher.js';
 import { sendMeetingResult } from './distributor/slack.js';
 import { saveMeetingToNotion } from './distributor/notion.js';
 import { saveMeetingToGSheets } from './distributor/gsheets.js';
@@ -38,6 +39,15 @@ startWatcher(WATCH_DIR, async (filePath: string) => {
     }
     const analysis = await analyzeMeeting(text, customPrompt);
     console.log(`       ✅ 완료`);
+
+    console.log(`[2.5/4] 💹 금융 데이터 보강 중... (financial-datasets MCP)`);
+    const financialContext = await enrichWithFinancialData(analysis, text);
+    if (financialContext) {
+      console.log(`       ✅ 완료 (티커: ${financialContext.tickers.join(', ')})`);
+      (analysis as Record<string, unknown>).financialContext = financialContext;
+    } else {
+      console.log(`       ⏭️  금융 키워드 없음, 건너뜀`);
+    }
 
     console.log(`[3/4] 💬 Slack 전송 중...`);
     await sendMeetingResult(analysis, fileName);
