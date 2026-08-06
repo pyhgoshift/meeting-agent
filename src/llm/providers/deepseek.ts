@@ -7,7 +7,7 @@ const client = new OpenAI({
 
 const MODEL = process.env.NVIDIA_MODEL ?? 'deepseek-ai/deepseek-v4-pro';
 
-export async function chat(systemPrompt: string, userContent: string): Promise<string> {
+export async function chatDeepSeek(systemPrompt: string, userContent: string): Promise<string> {
   const completion = await client.chat.completions.create({
     model: MODEL,
     messages: [
