@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { chat } from '../llm/providers/deepseek.js';
+import { chatDeepSeek as chat } from '../llm/providers/deepseek.js';
 
 const TodoSchema = z.object({
   task: z.string(),
