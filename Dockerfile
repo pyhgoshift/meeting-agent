@@ -23,9 +23,9 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-# 타임존 설정 (한국)
+# 타임존 설정 (한국) 및 ffmpeg 설치
 ENV TZ=Asia/Seoul
-RUN apk add --no-cache tzdata && \
+RUN apk add --no-cache tzdata ffmpeg && \
     cp /usr/share/zoneinfo/Asia/Seoul /etc/localtime && \
     echo "Asia/Seoul" > /etc/timezone
 

@@ -1,17 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import ffmpeg from 'fluent-ffmpeg';
-import ffmpegStatic from 'ffmpeg-static';
-// @ts-ignore
-import ffprobeStatic from 'ffprobe-static';
-
-// ffmpeg 경로 설정
-if (ffmpegStatic) {
-  ffmpeg.setFfmpegPath(ffmpegStatic as unknown as string);
-}
-if (ffprobeStatic && ffprobeStatic.path) {
-  ffmpeg.setFfprobePath(ffprobeStatic.path);
-}
 
 export interface ChunkerResult {
   chunkPaths: string[];
