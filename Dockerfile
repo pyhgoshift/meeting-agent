@@ -2,6 +2,7 @@
 FROM node:22-alpine AS builder
 
 WORKDIR /app
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 
 # 의존성 먼저 복사 (레이어 캐시 활용)
 COPY package*.json ./
