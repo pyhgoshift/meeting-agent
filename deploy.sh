@@ -40,10 +40,12 @@ if [ ! -f "$DEPLOY_DIR/.env" ]; then
   exit 1
 fi
 
-# 구형 모델명 자동 마이그레이션
+# 구형 모델명 자동 마이그레이션 (Synology 호환 방식)
 if grep -q "deepseek-ai/deepseek-v4-pro" "$DEPLOY_DIR/.env"; then
   echo "⚠️  구형 모델(deepseek-v4-pro) 감지됨. meta/llama-3.3-70b-instruct로 자동 마이그레이션합니다."
-  sed -i 's/deepseek-ai\/deepseek-v4-pro/meta\/llama-3.3-70b-instruct/g' "$DEPLOY_DIR/.env"
+  grep -v "NVIDIA_MODEL" "$DEPLOY_DIR/.env" > "$DEPLOY_DIR/.env.tmp"
+  echo "NVIDIA_MODEL=meta/llama-3.3-70b-instruct" >> "$DEPLOY_DIR/.env.tmp"
+  mv "$DEPLOY_DIR/.env.tmp" "$DEPLOY_DIR/.env"
 fi
 echo "      .env 확인 및 마이그레이션 완료"
 
