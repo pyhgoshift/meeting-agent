@@ -13,14 +13,26 @@ const ScheduleSchema = z.object({
   attendees: z.array(z.string()).optional(),
 });
 
+const QnASchema = z.object({
+  question: z.string(),
+  answer: z.string(),
+});
+
 const MeetingSchema = z.object({
   title: z.string(),
+  datetime: z.string().optional(),
+  venue: z.string().optional(),
   attendees: z.array(z.string()),
+  absentees: z.array(z.string()).optional(),
   agenda: z.string(),
   summary: z.string(),
+  keyRemarks: z.array(z.string()).optional(),
+  qna: z.array(QnASchema).optional(),
   decisions: z.array(z.string()),
   todos: z.array(TodoSchema),
   schedules: z.array(ScheduleSchema),
+  nextMeeting: z.string().optional(),
+  nextVenue: z.string().optional(),
 });
 
 export type MeetingAnalysis = z.infer<typeof MeetingSchema>;
@@ -30,17 +42,26 @@ const SYSTEM_PROMPT = `당신은 회의록 분석 전문가입니다.
 마크다운 코드블록 없이 순수 JSON만 출력하세요.
 
 {
-  "title": "회의 핵심 주제를 반영한 짧은 제목 (10자 내외)",
+  "title": "회의 핵심 주제를 반영한 제목",
+  "datetime": "YYYY-MM-DD HH:MM (회의 일시가 언급된 경우, 유추할 수 없으면 빈 문자열)",
+  "venue": "회의 장소 (언급된 경우)",
   "attendees": ["참석자1", "참석자2"],
+  "absentees": ["불참자1"],
   "agenda": "회의 안건 (주제)",
-  "summary": "회의 전체 요약 (3~5문장 한국어)",
+  "summary": "회의 전체 흐름과 맥락을 파악할 수 있는 상세한 요약 (시간순 또는 안건별로 매우 상세히 기술. 3~5줄 제한 없음. 길이가 긴 회의의 경우 최대한 구체적이고 길게 작성하세요.)",
+  "keyRemarks": ["(발언자A) : 중요한 발언 내용", "(발언자B) : 발언 내용"],
+  "qna": [
+    { "question": "질문 내용", "answer": "답변 내용" }
+  ],
   "decisions": ["결정사항1", "결정사항2"],
   "todos": [
     { "task": "할일 내용", "assignee": "담당자 이름", "due": "YYYY-MM-DD" }
   ],
   "schedules": [
     { "title": "일정 제목", "date": "YYYY-MM-DD", "attendees": ["참석자"] }
-  ]
+  ],
+  "nextMeeting": "다음 회의 일시 (YYYY-MM-DD HH:MM)",
+  "nextVenue": "다음 회의 장소"
 }`;
 
 export async function analyzeMeeting(transcript: string, customPrompt?: string, retries = 1): Promise<MeetingAnalysis> {
