@@ -52,7 +52,37 @@ AI가 알아서 대화를 듣고 텍스트로 바꾸며, 똑똑하게 요약하�
 2. **폴더 만들기**: NAS의 File Station을 열고 `homes/본인계정/recording` 이라는 폴더를 만듭니다.
 3. **배포 스크립트 세팅**: 시놀로지 **[제어판] ➡️ [작업 스케줄러]**에서 새로운 사용자 정의 스크립트(root 권한)를 하나 만들고 아래 코드를 넣습니다.
    ```bash
-   bash /volume1/docker/meeting-agent/deploy.sh
+   #!/bin/bash
+   LOG_DIR=/volume1/docker/logs
+   mkdir -p "$LOG_DIR"
+   LOG="$LOG_DIR/deploy_$(date '+%m%d-%H%M').log"
+   exec >> "$LOG" 2>&1
+
+   # 항상 같은 경로로 최신 로그를 볼 수 있게 바로가기 갱신
+   ln -sf "$LOG" "$LOG_DIR/latest.log"
+
+   echo "════════ $(date '+%F %T') 배포 시작 ════════"
+
+   cd /volume1/docker/meeting-agent || { echo "❌ 디렉토리 접근 실패"; exit 1; }
+   git fetch --all && git reset --hard origin/master || { echo "❌ 코드 동기화 실패"; exit 1; }
+
+   bash deploy.sh
+   RC=$?
+   echo "════════ $(date '+%F %T') 종료 (exit=$RC) ════════"
+
+   # 30일 지난 로그 자동 삭제
+   find "$LOG_DIR" -name 'deploy_*.log' -mtime +30 -exec rm -f {} \;
+
+   exit $RC
    ```
-4. **원클릭 실행**: 작업 스케줄러에서 방금 만든 작업을 [실행] 누르고 3분만 기다리면 AI 로봇이 눈을 뜹니다.
+   실행할 때마다 `logs/deploy_0811-1730.log` 처럼 시각이 박힌 로그가 따로 쌓이므로, 실패한 실행과 성공한 실행을 나중에 비교할 수 있습니다.
+
+   ℹ️ 스케줄러 안에서도 `git fetch & reset`을 하는 이유가 있습니다. `deploy.sh`는 자기 자신을 업데이트하는데, bash는 스크립트를 실행하면서 읽어 나가기 때문에 실행 도중 파일이 바뀌면 명령이 깨질 수 있습니다. 미리 동기화해두면 이 위험이 사라집니다. 같은 이유로 SSH에서 `deploy.sh`를 직접 실행하는 것보다 이 스케줄러를 쓰는 편이 안전합니다.
+
+   💡 작업 설정에서 **"비정상적으로 종료된 경우에만 실행 세부 결과 이메일 보내기"**를 켜두면 배포가 조용히 실패하는 일이 없습니다.
+4. **원클릭 실행**: 작업 스케줄러에서 방금 만든 작업을 [실행] 누르고 3~5분 기다리면 AI 로봇이 눈을 뜹니다. 잘 됐는지는 로그 마지막 줄로 확인합니다.
+   ```bash
+   tail -40 /volume1/docker/logs/latest.log
+   ```
+   `[5/5] 컨테이너 시작...`과 `Cloudflare Tunnel 커넥터 시작됨`이 보이면 성공입니다.
 5. **마법의 시작**: 이제 폰으로 회의를 녹음하고 `recording` 폴더에 툭 던져두기만 하면 끝입니다! 커피 한 잔 내리는 동안 슬랙으로 요약본이 배달될 것입니다. ☕
