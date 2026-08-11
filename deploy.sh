@@ -72,7 +72,10 @@ docker run -d \
   meeting-agent:latest
 
 # Cloudflare Tunnel 커넥터 실행 (meeting.pyhgoshift.com → meeting-agent:3000)
-TUNNEL_TOKEN=$(grep -E '^CLOUDFLARE_TUNNEL_TOKEN=' "$DEPLOY_DIR/.env" | cut -d'=' -f2-)
+# sed를 쓰는 이유: grep은 매치 실패 시 exit 1을 내고, set -e 환경에서 대입문의
+# 명령치환 실패는 스크립트를 그 자리에서 죽인다(아래 경고문이 영영 안 찍힘).
+# tr은 윈도우에서 .env를 편집했을 때 붙는 CR과 따옴표/공백을 제거한다.
+TUNNEL_TOKEN="$(sed -n 's/^CLOUDFLARE_TUNNEL_TOKEN=//p' "$DEPLOY_DIR/.env" | tail -n1 | tr -d "\r\"' ")"
 if [ -n "$TUNNEL_TOKEN" ]; then
   docker run -d \
     --name meeting-agent-tunnel \
