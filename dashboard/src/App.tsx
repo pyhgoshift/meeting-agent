@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Settings, FileText, MessageSquare, Activity, Loader2, LogOut, RefreshCw } from 'lucide-react';
+import { Save, Settings, FileText, MessageSquare, Activity, Loader2, LogOut, RefreshCw, Lock } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { API_BASE, fetchWithAuth } from './api';
 import LoginForm from './components/LoginForm';
@@ -10,7 +10,7 @@ function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [activeTab, setActiveTab] = useState<'status' | 'prompt' | 'slack' | 'env'>('status');
   
-  const [config, setConfig] = useState({ prompt: '', slackTemplate: '', env: '' });
+  const [config, setConfig] = useState({ prompt: '', slackTemplate: '', env: '', envPath: '' });
   const [status, setStatus] = useState<any>(null);
   const [meetings, setMeetings] = useState<any[]>([]);
   
@@ -77,7 +77,8 @@ function App() {
       await fetchWithAuth(`${API_BASE}/api/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config)
+        // env는 보내지 않는다. 화면의 값은 마스킹된 사본이라 그대로 저장하면 실제 키가 날아간다.
+        body: JSON.stringify({ prompt: config.prompt, slackTemplate: config.slackTemplate })
       });
       alert('저장 및 백업되었습니다! 🚀');
     } catch (e) {
@@ -103,6 +104,7 @@ function App() {
   }
 
   const isEditor = activeTab !== 'status';
+  const canSave = activeTab === 'prompt' || activeTab === 'slack';
   const currentValue = activeTab === 'prompt' ? config.prompt : activeTab === 'slack' ? config.slackTemplate : config.env;
 
   return (
@@ -129,8 +131,8 @@ function App() {
             <button onClick={handleLogout} className="p-3 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 transition-colors border border-white/5">
               <LogOut className="w-5 h-5" />
             </button>
-            {isEditor && (
-              <button 
+            {canSave && (
+              <button
                 onClick={handleSave}
                 disabled={saving}
                 className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl font-semibold shadow-lg shadow-blue-900/50 transition-all active:scale-95 disabled:opacity-50"
@@ -177,7 +179,7 @@ function App() {
               onClick={() => setActiveTab('env')}
               icon={<Settings className="w-5 h-5" />}
               title="환경 변수 (API 키)"
-              subtitle=".env (백업 보호됨)"
+              subtitle=".env (읽기 전용 · 마스킹)"
             />
           </div>
 
@@ -193,7 +195,7 @@ function App() {
                   {activeTab === 'status' && '📊 모니터링 대시보드'}
                   {activeTab === 'prompt' && '🧠 프롬프트 에디터'}
                   {activeTab === 'slack' && '🎨 슬랙 템플릿 에디터'}
-                  {activeTab === 'env' && '⚙️ 환경설정 에디터 (Secured)'}
+                  {activeTab === 'env' && '⚙️ 환경설정 뷰어 (읽기 전용)'}
                 </h2>
               </div>
               
@@ -206,17 +208,34 @@ function App() {
                   <MeetingsTable meetings={meetings} />
                 </>
               ) : (
-                <textarea 
-                  value={currentValue}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (activeTab === 'prompt') setConfig({ ...config, prompt: val });
-                    if (activeTab === 'slack') setConfig({ ...config, slackTemplate: val });
-                    if (activeTab === 'env') setConfig({ ...config, env: val });
-                  }}
-                  className="flex-1 w-full bg-black/40 border border-white/5 rounded-xl p-4 text-slate-300 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-none"
-                  placeholder={activeTab === 'prompt' ? '여기에 AI 프롬프트를 입력하세요...' : ''}
-                />
+                <>
+                  {activeTab === 'env' && (
+                    <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-200/90">
+                      <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                      <div>
+                        <span className="font-semibold">읽기 전용입니다.</span> API 키는 앞뒤 네 글자만 남기고 가려서 보여줍니다.
+                        환경변수는 컨테이너가 시작할 때 한 번만 읽히므로 여기서 고쳐도 반영되지 않습니다.
+                        수정하려면 NAS의 <code className="rounded bg-black/40 px-1.5 py-0.5 font-mono text-xs">{config.envPath || '/volume1/docker/meeting-agent/.env'}</code>
+                        를 직접 편집한 뒤 재배포하세요.
+                      </div>
+                    </div>
+                  )}
+                  <textarea
+                    value={currentValue}
+                    readOnly={activeTab === 'env'}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (activeTab === 'prompt') setConfig({ ...config, prompt: val });
+                      if (activeTab === 'slack') setConfig({ ...config, slackTemplate: val });
+                    }}
+                    className={`flex-1 w-full bg-black/40 border border-white/5 rounded-xl p-4 font-mono text-sm focus:outline-none resize-none ${
+                      activeTab === 'env'
+                        ? 'text-slate-500 cursor-default'
+                        : 'text-slate-300 focus:ring-2 focus:ring-blue-500/50'
+                    }`}
+                    placeholder={activeTab === 'prompt' ? '여기에 AI 프롬프트를 입력하세요...' : ''}
+                  />
+                </>
               )}
             </div>
           </motion.div>
