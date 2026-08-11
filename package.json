@@ -1,6 +1,6 @@
 {
   "name": "meeting-agent",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "회의 녹음을 자동으로 텍스트 변환하고 요약·일정·할일을 추출해 Slack/Calendar/Notion으로 분배하는 AI 에이전트",
   "main": "index.js",
   "type": "module",
@@ -10,6 +10,7 @@
     "transcribe": "tsx src/transcribe/test.ts",
     "analyze": "tsx src/extract/test.ts",
     "run:pipeline": "tsx src/pipeline.ts",
+    "run:pipeline:enhanced": "tsx src/pipeline-enhanced.ts",
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -17,10 +18,13 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@googleapis/calendar": "^16.0.0",
     "@notionhq/client": "^5.20.0",
     "@slack/bolt": "^5.0.0",
     "@slack/web-api": "^7.15.1",
+    "@types/better-sqlite3": "^9.6.0",
+    "better-sqlite3": "^13.0.3",
     "chokidar": "^5.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",

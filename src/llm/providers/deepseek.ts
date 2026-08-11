@@ -5,9 +5,9 @@ const client = new OpenAI({
   apiKey: process.env.NVIDIA_API_KEY,
 });
 
-const MODEL = process.env.NVIDIA_MODEL ?? 'meta/llama-3.3-70b-instruct';
+const MODEL = process.env.NVIDIA_MODEL ?? 'deepseek-ai/deepseek-v4-pro';
 
-export async function chat(systemPrompt: string, userContent: string): Promise<string> {
+export async function chatDeepSeek(systemPrompt: string, userContent: string): Promise<string> {
   const completion = await client.chat.completions.create({
     model: MODEL,
     messages: [
@@ -18,6 +18,5 @@ export async function chat(systemPrompt: string, userContent: string): Promise<s
     top_p: 0.95,
     max_tokens: 4096,
   });
-
   return completion.choices[0]?.message?.content ?? '';
 }
