@@ -23,7 +23,7 @@ const meetingId = crypto.randomUUID();
 console.log(`\n[meeting-agent enhanced] ${fileName} (mode: ${modeArg})`);
 console.log(`  meeting_id: ${meetingId}`);
 
-createmeetingId (meetingId, fileName, modeArg);
+createmeetingId(meetingId, fileName, modeArg);
 startSummary(meetingId);
 
 let durationSec = 0;
