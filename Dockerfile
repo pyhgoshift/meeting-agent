@@ -10,7 +10,6 @@ RUN npm ci
 # 소스 복사 후 TypeScript 컴파일
 COPY tsconfig.json ./
 COPY src/ ./src/
-ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN npm run build
 
 # 대시보드 빌드

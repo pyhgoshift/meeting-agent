@@ -1,4 +1,4 @@
-import { google } from 'googleapis';
+import { calendar, auth } from '@googleapis/calendar';
 import fs from 'fs';
 import type { MeetingAnalysis } from '../extract/analyzer.js';
 
@@ -16,12 +16,12 @@ export async function saveMeetingToCalendar(analysis: MeetingAnalysis, fileName:
     return;
   }
 
-  const auth = new google.auth.GoogleAuth({
+  const authClient = new auth.GoogleAuth({
     keyFile: KEY_PATH,
     scopes: ['https://www.googleapis.com/auth/calendar.events'],
   });
 
-  const calendar = google.calendar({ version: 'v3', auth });
+  const cal = calendar({ version: 'v3', auth: authClient });
 
   // schedules 와 nextMeeting을 모두 통합하여 이벤트로 생성
   const eventsToCreate = [];
@@ -71,7 +71,7 @@ export async function saveMeetingToCalendar(analysis: MeetingAnalysis, fileName:
     }
 
     try {
-      await calendar.events.insert({
+      await cal.events.insert({
         calendarId: CALENDAR_ID,
         requestBody: {
           summary: event.title,
