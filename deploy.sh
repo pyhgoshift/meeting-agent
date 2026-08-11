@@ -68,6 +68,7 @@ docker run -d \
   --restart always \
   --network meeting-net \
   -v "$RECORDING_DIR":/recordings \
+  -v "$DEPLOY_DIR":/app/config:ro \
   --env-file "$DEPLOY_DIR/.env" \
   meeting-agent:latest
 
