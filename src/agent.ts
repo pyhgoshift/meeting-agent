@@ -9,6 +9,7 @@ import { saveMeetingToNotion } from './distributor/notion.js';
 import { saveMeetingToGSheets } from './distributor/gsheets.js';
 import { startDashboardServer } from './dashboard/server.js';
 import { appendHistoryRecord } from './dashboard/history.js';
+import { saveMeetingToCalendar } from './distributor/gcal.js';
 
 const WATCH_DIR = process.env.WATCH_DIR ?? './recordings';
 
@@ -47,8 +48,12 @@ startWatcher(WATCH_DIR, async (filePath: string) => {
     const notionUrl = await saveMeetingToNotion(analysis, fileName, durationSec, text);
     console.log(`       ✅ 완료 → ${notionUrl}`);
 
-    console.log(`[5/5] 📊 구글 시트 누적 기록 중...`);
+    console.log(`[5/6] 📊 구글 시트 누적 기록 중...`);
     await saveMeetingToGSheets(analysis, fileName);
+    console.log(`       ✅ 완료`);
+
+    console.log(`[6/6] 🗓️ 구글 캘린더 연동 중...`);
+    await saveMeetingToCalendar(analysis, fileName);
     console.log(`       ✅ 완료`);
 
     // ─── 폰 용량 확보용 자동 아카이브 ───
