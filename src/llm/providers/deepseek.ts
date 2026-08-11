@@ -5,7 +5,7 @@ const client = new OpenAI({
   apiKey: process.env.NVIDIA_API_KEY,
 });
 
-const MODEL = process.env.NVIDIA_MODEL ?? 'deepseek-ai/deepseek-v4-pro';
+const MODEL = process.env.NVIDIA_MODEL ?? 'meta/llama-3.3-70b-instruct';
 
 export async function chat(systemPrompt: string, userContent: string): Promise<string> {
   const completion = await client.chat.completions.create({
