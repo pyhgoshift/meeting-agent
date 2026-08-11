@@ -38,7 +38,7 @@ export async function transcribe(filePath: string): Promise<TranscriptResult> {
           language: 'ko',
           response_format: 'json',
         });
-        fullText += response.text + ' ';
+        fullText += `\n\n[분할 녹음 ${i + 1}/${chunkPaths.length} 구간]\n` + response.text + '\n';
       }
     } finally {
       console.log(`       🧹 임시 분할 파일 정리 중...`);
