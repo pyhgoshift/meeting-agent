@@ -25,3 +25,10 @@ data/meetings/
 
 # 작업 메모
 *.txt
+
+# Credentials and local binaries
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+*.exe

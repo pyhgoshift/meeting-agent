@@ -7,8 +7,6 @@ services:
     restart: always
     volumes:
       - /volume1/homes/freudpark/recording:/recordings  # 자동 삭제/이동을 위해 읽기/쓰기 권한 부여
-    ports:
-      - "100.107.101.51:3000:3000"
     env_file:
       - .env
     environment:
@@ -20,3 +18,12 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+  # 대시보드 외부 접속: Cloudflare Tunnel (포트 미공개, Access 이메일 인증 경유)
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: meeting-agent-tunnel
+    restart: always
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - meeting-agent

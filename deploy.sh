@@ -55,22 +55,42 @@ echo "      빌드 완료"
 
 # 5. 컨테이너 실행
 echo "[5/5] 컨테이너 시작..."
-# 기존 컨테이너 정리
-docker stop meeting-agent 2>/dev/null || true
-docker rm meeting-agent 2>/dev/null || true
+# 전용 네트워크 준비 (meeting-agent와 cloudflared가 내부 통신)
+docker network create meeting-net 2>/dev/null || true
 
-# 새 컨테이너 실행
+# 기존 컨테이너 정리
+docker stop meeting-agent meeting-agent-tunnel 2>/dev/null || true
+docker rm meeting-agent meeting-agent-tunnel 2>/dev/null || true
+
+# 새 컨테이너 실행 (포트 미공개 — 외부 접근은 Cloudflare Tunnel 경유만 허용)
 docker run -d \
   --name meeting-agent \
   --restart always \
-  --network host \
+  --network meeting-net \
   -v "$RECORDING_DIR":/recordings \
   --env-file "$DEPLOY_DIR/.env" \
   meeting-agent:latest
 
+# Cloudflare Tunnel 커넥터 실행 (meeting.pyhgoshift.com → meeting-agent:3000)
+TUNNEL_TOKEN=$(grep -E '^CLOUDFLARE_TUNNEL_TOKEN=' "$DEPLOY_DIR/.env" | cut -d'=' -f2-)
+if [ -n "$TUNNEL_TOKEN" ]; then
+  docker run -d \
+    --name meeting-agent-tunnel \
+    --restart always \
+    --network meeting-net \
+    cloudflare/cloudflared:latest tunnel --no-autoupdate run --token "$TUNNEL_TOKEN"
+  echo "      Cloudflare Tunnel 커넥터 시작됨"
+else
+  echo "⚠️  CLOUDFLARE_TUNNEL_TOKEN이 .env에 없습니다. 대시보드 외부 접속 불가."
+  echo "   Cloudflare Zero Trust → 네트워크 → 커넥터 → meeting-agent 터널에서 토큰을 복사해"
+  echo "   .env에 CLOUDFLARE_TUNNEL_TOKEN=<토큰> 을 추가한 뒤 재배포하세요."
+fi
+
 echo ""
 echo "✅ 배포 완료!"
 echo "────────────────────────────────────"
+echo "🌐 대시보드:  https://meeting.pyhgoshift.com (Cloudflare Access 이메일 인증)"
 echo "📋 로그 확인: docker logs -f meeting-agent"
-echo "⏹️  중지:     docker stop meeting-agent"
+echo "📋 터널 로그: docker logs -f meeting-agent-tunnel"
+echo "⏹️  중지:     docker stop meeting-agent meeting-agent-tunnel"
 echo "🔄 업데이트:  bash $DEPLOY_DIR/deploy.sh"
