@@ -15,9 +15,11 @@ export async function saveMeetingToNotion(
   analysis: MeetingAnalysis,
   fileName: string,
   durationSec: number,
+  rawText: string = '',
 ): Promise<string> {
   // 날짜: schedules에서 추출, 없으면 오늘
   const meetingDate =
+    analysis.datetime?.split(' ')[0] ??
     analysis.schedules.find((s) => s.date)?.date ??
     new Date().toISOString().split('T')[0];
 
@@ -37,17 +39,16 @@ export async function saveMeetingToNotion(
         .join('\n')
     : '없음';
 
-  // 참석자 (schedules에서 중복 제거)
-  const attendees = [
-    ...new Set(analysis.schedules.flatMap((s) => s.attendees ?? [])),
-  ].join(', ') || '정보 없음';
+  // 참석자 (schedules에서 중복 제거 및 attendees 병합)
+  const allAttendees = new Set([...analysis.attendees, ...analysis.schedules.flatMap((s) => s.attendees ?? [])]);
+  const attendees = [...allAttendees].join(', ') || '정보 없음';
 
   // DB 행 생성
   const page = await notion.pages.create({
     parent: { database_id: DATABASE_ID },
     properties: {
       이름: {
-        title: rt(fileName.replace(/\.[^/.]+$/, '')), // 확장자 제거
+        title: rt(analysis.title || fileName.replace(/\.[^/.]+$/, '')),
       },
       날짜: {
         date: { start: meetingDate },
@@ -72,17 +73,32 @@ export async function saveMeetingToNotion(
       },
     },
     // 페이지 본문: 상세 내용
-    children: buildBody(analysis),
+    children: buildBody(analysis, rawText),
   });
 
   return (page as unknown as { url: string }).url;
 }
 
 // ─── 페이지 본문 블록 빌더 ───────────────────────────────────────
-function buildBody(analysis: MeetingAnalysis): BlockObjectRequest[] {
+function buildBody(analysis: MeetingAnalysis, rawText: string): BlockObjectRequest[] {
   const blocks: BlockObjectRequest[] = [];
 
   blocks.push(h2('📝 요약'), para(analysis.summary), divider());
+
+  if (analysis.keyRemarks?.length) {
+    blocks.push(h2('🗣️ 주요 발언'));
+    analysis.keyRemarks.forEach((r) => blocks.push(bullet(r)));
+    blocks.push(divider());
+  }
+
+  if (analysis.qna?.length) {
+    blocks.push(h2('❓ 질의 응답'));
+    analysis.qna.forEach((q) => {
+      blocks.push(bullet(`Q: ${q.question}`));
+      blocks.push(bullet(`A: ${q.answer}`));
+    });
+    blocks.push(divider());
+  }
 
   if (analysis.decisions.length) {
     blocks.push(h2('✅ 결정사항'));
@@ -105,11 +121,34 @@ function buildBody(analysis: MeetingAnalysis): BlockObjectRequest[] {
     blocks.push(divider());
   }
 
-  if (analysis.schedules.length) {
+  if (analysis.schedules.length || analysis.nextMeeting) {
     blocks.push(h2('📅 일정'));
+    if (analysis.nextMeeting) {
+      blocks.push(bullet(`[차기 회의] ${analysis.nextMeeting} (장소: ${analysis.nextVenue || '미정'})`));
+    }
     analysis.schedules.forEach((s) => {
       const parts = [s.title, s.date, s.attendees?.join(', ')].filter(Boolean);
       blocks.push(bullet(parts.join(' | ')));
+    });
+    blocks.push(divider());
+  }
+
+  // 원문 토글 (2000자씩 분할)
+  if (rawText) {
+    const rawChunks = [];
+    let remaining = rawText;
+    while (remaining.length > 0) {
+      rawChunks.push(remaining.substring(0, 1999));
+      remaining = remaining.substring(1999);
+    }
+    
+    blocks.push({
+      object: 'block',
+      type: 'toggle',
+      toggle: {
+        rich_text: rt('💬 원문 스크립트 보기 (Raw Transcript)'),
+        children: rawChunks.map(chunk => para(chunk))
+      }
     });
   }
 

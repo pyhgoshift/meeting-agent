@@ -5,17 +5,28 @@ const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
 const CHANNEL = process.env.SLACK_CHANNEL_ID ?? '';
 
 export async function sendMeetingResult(analysis: MeetingAnalysis, fileName: string): Promise<void> {
+  const datetime = analysis.datetime || '미지정';
+  const venue = analysis.venue || '미지정';
+  const absentees = analysis.absentees?.length ? analysis.absentees.join(', ') : '미지정';
+  const nextMeeting = analysis.nextMeeting || '미지정';
+  const nextVenue = analysis.nextVenue || '미지정';
+  const author = 'AI Meeting Agent';
+  
+  const kst = new Date();
+  kst.setHours(kst.getHours() + 9);
+  const createdDate = kst.toISOString().split('T')[0];
+
   const decisions = analysis.decisions.length
-    ? analysis.decisions.map((d) => `• ${d}`).join('\n')
-    : '없음';
+    ? analysis.decisions.map((d, i) => `  - 결정 ${i + 1} : ${d}`).join('\n')
+    : '  - 없음';
 
   const todos = analysis.todos.length
-    ? analysis.todos.map((t) => {
-        const who = t.assignee ? ` *[${t.assignee}]*` : '';
-        const when = t.due ? ` (~${t.due})` : '';
-        return `• ${t.task}${who}${when}`;
+    ? analysis.todos.map((t, i) => {
+        const who = t.assignee ? t.assignee : '미정';
+        const when = t.due ? t.due : '미정';
+        return `  - Task ${i + 1} : ${t.task} / 담당: ${who} / 기한: ${when}`;
       }).join('\n')
-    : '없음';
+    : '  - 없음';
 
   const schedules = analysis.schedules.length
     ? analysis.schedules.map((s) => {
@@ -23,6 +34,15 @@ export async function sendMeetingResult(analysis: MeetingAnalysis, fileName: str
         return `• ${s.title}${date}`;
       }).join('\n')
     : '없음';
+
+  const qna = analysis.qna?.length
+    ? analysis.qna.map((q) => `    - 질문: ${q.question}\n    - 답변: ${q.answer}`).join('\n\n')
+    : '    - 없음';
+
+  let summaryText = analysis.summary;
+  if (analysis.keyRemarks?.length) {
+    summaryText += '\n\n  주요 발언:\n' + analysis.keyRemarks.map(r => `    - ${r}`).join('\n');
+  }
 
   const slackTitle = analysis.title || fileName;
   const attendees = analysis.attendees?.join(', ') || '미지정';
@@ -40,12 +60,22 @@ export async function sendMeetingResult(analysis: MeetingAnalysis, fileName: str
     // 치환 (Placeholder replacement)
     template = template
       .replace(/\{\{title\}\}/g, slackTitle)
+      .replace(/\{\{datetime\}\}/g, datetime)
+      .replace(/\{\{venue\}\}/g, venue)
       .replace(/\{\{attendees\}\}/g, attendees)
+      .replace(/\{\{absentees\}\}/g, absentees)
       .replace(/\{\{agenda\}\}/g, agenda)
-      .replace(/\{\{summary\}\}/g, analysis.summary)
+      .replace(/\{\{summary\}\}/g, summaryText)
       .replace(/\{\{decisions\}\}/g, decisions)
       .replace(/\{\{todos\}\}/g, todos)
       .replace(/\{\{schedules\}\}/g, schedules)
+      .replace(/\{\{qna\}\}/g, qna)
+      .replace(/\{\{nextMeeting\}\}/g, nextMeeting)
+      .replace(/\{\{nextVenue\}\}/g, nextVenue)
+      .replace(/\{\{attachments\}\}/g, '없음 (음성 분석 완료)')
+      .replace(/\{\{relatedDocs\}\}/g, '없음')
+      .replace(/\{\{author\}\}/g, author)
+      .replace(/\{\{createdDate\}\}/g, createdDate)
       .replace(/\{\{fileName\}\}/g, fileName);
 
     try {

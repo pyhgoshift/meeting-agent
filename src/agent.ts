@@ -44,7 +44,7 @@ startWatcher(WATCH_DIR, async (filePath: string) => {
     console.log(`       ✅ 완료`);
 
     console.log(`[4/4] 📝 Notion 저장 중...`);
-    const notionUrl = await saveMeetingToNotion(analysis, fileName, durationSec);
+    const notionUrl = await saveMeetingToNotion(analysis, fileName, durationSec, text);
     console.log(`       ✅ 완료 → ${notionUrl}`);
 
     console.log(`[5/5] 📊 구글 시트 누적 기록 중...`);
