@@ -5,10 +5,7 @@ const client = new OpenAI({
   apiKey: process.env.NVIDIA_API_KEY,
 });
 
-let MODEL = process.env.NVIDIA_MODEL ?? 'meta/llama-3.3-70b-instruct';
-if (MODEL === 'deepseek-ai/deepseek-v4-pro') {
-  MODEL = 'meta/llama-3.3-70b-instruct'; // 강제 덮어쓰기 (410 에러 방지)
-}
+const MODEL = process.env.NVIDIA_MODEL ?? 'meta/llama-3.3-70b-instruct';
 
 export async function chat(systemPrompt: string, userContent: string): Promise<string> {
   const completion = await client.chat.completions.create({

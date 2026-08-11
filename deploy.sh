@@ -30,8 +30,8 @@ else
   cd "$DEPLOY_DIR"
 fi
 
-# 3. .env 파일 확인
-echo "[3/5] 환경변수 확인..."
+# 3. .env 파일 확인 및 마이그레이션
+echo "[3/5] 환경변수 확인 및 마이그레이션..."
 if [ ! -f "$DEPLOY_DIR/.env" ]; then
   echo "⚠️  .env 파일이 없습니다!"
   echo "   아래 명령어로 생성하세요:"
@@ -39,7 +39,13 @@ if [ ! -f "$DEPLOY_DIR/.env" ]; then
   echo "   vi $DEPLOY_DIR/.env  (API 키 입력)"
   exit 1
 fi
-echo "      .env 확인 완료"
+
+# 구형 모델명 자동 마이그레이션
+if grep -q "deepseek-ai/deepseek-v4-pro" "$DEPLOY_DIR/.env"; then
+  echo "⚠️  구형 모델(deepseek-v4-pro) 감지됨. meta/llama-3.3-70b-instruct로 자동 마이그레이션합니다."
+  sed -i 's/deepseek-ai\/deepseek-v4-pro/meta\/llama-3.3-70b-instruct/g' "$DEPLOY_DIR/.env"
+fi
+echo "      .env 확인 및 마이그레이션 완료"
 
 # 4. Docker 이미지 빌드
 echo "[4/5] Docker 이미지 빌드 (3~5분 소요)..."
