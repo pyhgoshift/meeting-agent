@@ -6,7 +6,12 @@ services:
     container_name: meeting-agent
     restart: always
     volumes:
-      - /volume1/homes/freudpark/recording:/recordings  # 자동 삭제/이동을 위해 읽기/쓰기 권한 부여
+      # deploy.sh 와 같은 경로여야 한다. 상위 recording 폴더를 통째로 마운트하면
+      # 폰이 그 아래 떨궈놓은 다른 녹음까지 전부 감시 대상이 된다.
+      - "/volume1/homes/freudpark/recording/Voice Recorder:/recordings"  # 처리 후 아카이브 이동을 위해 쓰기 권한 필요
+      # 배포 디렉토리를 읽기 전용으로. 구글 서비스 계정 키(GOOGLE_SERVICE_KEY_PATH)와
+      # 대시보드가 보여주는 .env 가 여기 들어있다. deploy.sh 도 같은 마운트를 건다.
+      - "./:/app/config:ro"
     env_file:
       - .env
     environment:
