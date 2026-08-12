@@ -32,3 +32,12 @@ data/meetings/
 !package-lock.json
 !tsconfig.json
 *.exe
+
+# 업무 문서 — 저장소에 들어가면 안 된다 (실제 회의 내용·실명 포함)
+*.pdf
+*.hwp
+*.hwpx
+*.zip
+*.docx
+*.xlsx
+*.pptx

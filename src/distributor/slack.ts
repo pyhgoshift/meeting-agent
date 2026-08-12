@@ -1,8 +1,46 @@
 import { WebClient } from '@slack/web-api';
 import type { MeetingAnalysis } from '../extract/analyzer.js';
+import { peekSequence } from '../utils/sequence.js';
 
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
 const CHANNEL = process.env.SLACK_CHANNEL_ID ?? '';
+
+/**
+ * 표준 회의록 양식의 참석자 칸. 소속별로 한 줄씩 묶는다.
+ * 전사본에서 소속이 안 드러나면 기존처럼 이름만 나열한다.
+ */
+function renderAttendees(analysis: MeetingAnalysis): string {
+  const groups = analysis.attendeeGroups?.filter(g => g.members?.length);
+  if (groups?.length) {
+    return groups.map(g => `    · ${g.org} : ${g.members.join(', ')}`).join('\n');
+  }
+  return `    · ${analysis.attendees?.join(', ') || '미지정'}`;
+}
+
+/**
+ * 양식의 '회의 내용' 칸. □ 대주제 → - 소주제 → Ÿ 세부항목 3단 개조식.
+ * contents가 비어 있으면(구조화 실패 또는 짧은 회의) summary 줄글로 대체한다.
+ */
+function renderContents(analysis: MeetingAnalysis): string {
+  const sections = analysis.contents?.filter(c => c.topic);
+  if (!sections?.length) return `  ${analysis.summary}`;
+
+  return sections.map(sec => {
+    const head = `  □ ${sec.topic}`;
+    const body = (sec.subtopics ?? []).map(sub => {
+      const name = `    - ${sub.name}`;
+      const pts = (sub.points ?? []).map(p => `      Ÿ ${p}`).join('\n');
+      return pts ? `${name}\n${pts}` : name;
+    }).join('\n');
+    return body ? `${head}\n${body}` : head;
+  }).join('\n\n');
+}
+
+function renderRequests(analysis: MeetingAnalysis): string {
+  return analysis.requests?.length
+    ? analysis.requests.map(r => `    - ${r}`).join('\n')
+    : '    - 없음';
+}
 
 export async function sendMeetingResult(analysis: MeetingAnalysis, fileName: string): Promise<void> {
   const datetime = analysis.datetime || '미지정';
@@ -48,6 +86,13 @@ export async function sendMeetingResult(analysis: MeetingAnalysis, fileName: str
   const attendees = analysis.attendees?.join(', ') || '미지정';
   const agenda = analysis.agenda || '없음';
 
+  // 표준 회의록 양식용 값. 회의 번호는 구글 시트에 기록될 번호와 같은 값을 쓴다
+  // (시트 기록이 슬랙 전송보다 뒤에 일어나므로 여기서는 미리보기로 읽는다).
+  const meetingNo = peekSequence();
+  const attendeeBlock = renderAttendees(analysis);
+  const contentsBlock = renderContents(analysis);
+  const requestsBlock = renderRequests(analysis);
+
   // 1. 외부 템플릿(slack_template.txt) 확인
   const WATCH_DIR = process.env.WATCH_DIR ?? './recordings';
   const fsMod = await import('fs');
@@ -63,6 +108,10 @@ export async function sendMeetingResult(analysis: MeetingAnalysis, fileName: str
       .replace(/\{\{datetime\}\}/g, datetime)
       .replace(/\{\{venue\}\}/g, venue)
       .replace(/\{\{attendees\}\}/g, attendees)
+      .replace(/\{\{meetingNo\}\}/g, meetingNo)
+      .replace(/\{\{attendeeGroups\}\}/g, attendeeBlock)
+      .replace(/\{\{contents\}\}/g, contentsBlock)
+      .replace(/\{\{requests\}\}/g, requestsBlock)
       .replace(/\{\{absentees\}\}/g, absentees)
       .replace(/\{\{agenda\}\}/g, agenda)
       .replace(/\{\{summary\}\}/g, summaryText)
@@ -116,19 +165,31 @@ export async function sendMeetingResult(analysis: MeetingAnalysis, fileName: str
         },
         {
           type: 'header',
-          text: { type: 'plain_text', text: `📋 ${slackTitle}`, emoji: true },
+          text: { type: 'plain_text', text: `📋 회 의 록`, emoji: true },
         },
         {
-          type: 'context',
-          elements: [
-            { type: 'mrkdwn', text: `👥 참석자: ${attendees}` },
-            { type: 'mrkdwn', text: `🎯 안건: ${agenda}` }
-          ],
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: [
+              `*회의 번호* : ${meetingNo}`,
+              `*제 목* : ${slackTitle}`,
+              `*일 시* : ${datetime}`,
+              `*장 소* : ${venue}`,
+              `*작 성 자* : ${author}`,
+              `*참 석 자*`,
+              attendeeBlock,
+            ].join('\n').substring(0, 2999),
+          },
         },
         { type: 'divider' },
         {
           type: 'section',
-          text: { type: 'mrkdwn', text: `*📝 요약*\n${analysis.summary}`.substring(0, 2999) },
+          text: { type: 'mrkdwn', text: `*회의 내용*\n${contentsBlock}`.substring(0, 2999) },
+        },
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: `*□ 요청 및 질의 사항*\n${requestsBlock}`.substring(0, 2999) },
         },
         { type: 'divider' },
         {

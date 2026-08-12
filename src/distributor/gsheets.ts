@@ -1,40 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { MeetingAnalysis } from '../extract/analyzer.js';
+import { nextSequence } from '../utils/sequence.js';
 
 // 웹훅 URL 하드코딩 또는 환경변수 처리
 const WEBHOOK_URL = process.env.GSHEETS_WEBHOOK_URL ?? 'https://script.google.com/macros/s/AKfycbwSroeYNVA5NrubKL8A2f5uFzITtBfv47SiwocZqxFPDB7x1ipwawrJusuECEsqhZD42g/exec';
 
-function getNextSequence(): string {
-  const WATCH_DIR = process.env.WATCH_DIR ?? './recordings';
-  const seqFilePath = path.join(WATCH_DIR, '.sequence.json');
-  
-  const today = new Date();
-  // 한국 시간(KST) 기준 날짜 문자열 생성 (YYMMDD)
-  today.setHours(today.getHours() + 9);
-  const yy = String(today.getUTCFullYear()).slice(-2);
-  const mm = String(today.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(today.getUTCDate()).padStart(2, '0');
-  const dateStr = `${yy}${mm}${dd}`;
-
-  let nextNum = 1;
-
-  if (fs.existsSync(seqFilePath)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(seqFilePath, 'utf-8'));
-      if (data.date === dateStr) {
-        nextNum = data.count + 1;
-      }
-    } catch (e) {
-      // 무시하고 1부터 시작
-    }
-  }
-
-  // 상태 저장
-  fs.writeFileSync(seqFilePath, JSON.stringify({ date: dateStr, count: nextNum }), 'utf-8');
-
-  return `${dateStr}-${String(nextNum).padStart(2, '0')}`;
-}
 
 export async function saveMeetingToGSheets(analysis: MeetingAnalysis, fileName: string): Promise<void> {
   if (!WEBHOOK_URL) {
@@ -42,7 +13,7 @@ export async function saveMeetingToGSheets(analysis: MeetingAnalysis, fileName: 
     return;
   }
 
-  const sequence = getNextSequence();
+  const sequence = nextSequence();
   const kst = new Date();
   kst.setHours(kst.getHours() + 9);
   const date = kst.toISOString().split('T')[0]; // YYYY-MM-DD (KST)
