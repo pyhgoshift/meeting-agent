@@ -16,6 +16,7 @@ function App() {
   
   const [saving, setSaving] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   const checkAuth = async () => {
     try {
@@ -43,11 +44,21 @@ function App() {
       const statData = await statRes.json();
       const meetData = await meetRes.json();
 
-      setConfig(confData.data);
-      setStatus(statData.data.watcher);
-      setMeetings(meetData.data);
+      // 응답에 data가 없을 수 있다(서버가 500을 냈다거나). 예전엔 그걸 그대로
+      // setConfig에 넣어 config가 undefined가 됐고, 다음 렌더의 config.env에서
+      // 화면 전체가 죽었다. 병합 방식으로 바꿔 config는 절대 undefined가 되지 않는다.
+      if (confData?.data) {
+        setConfig(prev => ({ ...prev, ...confData.data }));
+        setLoadError('');
+      } else {
+        setLoadError(confData?.error ?? '설정을 불러오지 못했습니다.');
+      }
+
+      setStatus(statData?.data?.watcher ?? null);
+      setMeetings(Array.isArray(meetData?.data) ? meetData.data : []);
     } catch (e) {
       if ((e as Error).message === 'Unauthorized') setAuthenticated(false);
+      else setLoadError((e as Error).message);
     }
     setLoadingData(false);
   };
@@ -198,7 +209,13 @@ function App() {
                   {activeTab === 'env' && '⚙️ 환경설정 뷰어 (읽기 전용)'}
                 </h2>
               </div>
-              
+
+              {loadError && (
+                <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  <span className="font-semibold">서버 응답 오류:</span> {loadError}
+                </div>
+              )}
+
               {loadingData ? (
                 <div className="flex-1 flex items-center justify-center"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>
               ) : activeTab === 'status' ? (
