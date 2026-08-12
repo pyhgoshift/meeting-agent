@@ -7,32 +7,43 @@ const STEP_LABEL: Record<string, string> = {
   calendar: '캘린더',
 };
 
+interface Step { name: string; status: string; detail?: string }
+
 // 배포처별 결과 칩. 전체 상태가 '성공'이어도 캘린더만 실패할 수 있어 따로 보여준다.
-function StepChips({ steps }: { steps?: { name: string; status: string; detail?: string }[] }) {
+// 실패 사유는 hover 툴팁이 아니라 본문에 그대로 적는다 — 이 대시보드는 주로 폰에서
+// 열리는데, 터치 화면에는 hover가 없어 정작 필요할 때 사유를 읽을 방법이 없다.
+function StepChips({ steps }: { steps?: Step[] }) {
   if (!steps || steps.length === 0) return <span className="text-xs text-slate-600">-</span>;
 
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {steps.map((s, i) => {
-        const style =
-          s.status === 'ok' ? 'bg-green-500/15 text-green-300 border-green-500/25'
-          : s.status === 'fail' ? 'bg-red-500/15 text-red-300 border-red-500/30'
-          : 'bg-slate-500/15 text-slate-400 border-slate-500/25';
-        const mark = s.status === 'ok' ? '✓' : s.status === 'fail' ? '✕' : '–';
+  const failures = steps.filter(s => s.status === 'fail' && s.detail);
 
-        return (
-          <span key={i} className="group/step relative">
-            <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${style}`}>
+  return (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap gap-1.5">
+        {steps.map((s, i) => {
+          const style =
+            s.status === 'ok' ? 'bg-green-500/15 text-green-300 border-green-500/25'
+            : s.status === 'fail' ? 'bg-red-500/15 text-red-300 border-red-500/30'
+            : 'bg-slate-500/15 text-slate-400 border-slate-500/25';
+          const mark = s.status === 'ok' ? '✓' : s.status === 'fail' ? '✕' : '–';
+
+          return (
+            <span
+              key={i}
+              title={s.detail ?? ''}
+              className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${style}`}
+            >
               {mark} {STEP_LABEL[s.name] ?? s.name}
             </span>
-            {s.detail && (
-              <span className="pointer-events-none absolute bottom-full left-0 z-50 mb-1 hidden w-max max-w-md whitespace-normal rounded border border-white/10 bg-slate-800 p-2 text-xs text-slate-200 shadow-xl group-hover/step:block">
-                {s.detail}
-              </span>
-            )}
-          </span>
-        );
-      })}
+          );
+        })}
+      </div>
+
+      {failures.map((s, i) => (
+        <div key={i} className="max-w-md break-words text-xs leading-relaxed text-red-300/80">
+          <span className="font-semibold">{STEP_LABEL[s.name] ?? s.name}:</span> {s.detail}
+        </div>
+      ))}
     </div>
   );
 }
@@ -61,29 +72,25 @@ export default function MeetingsTable({ meetings }: { meetings: any[] }) {
         </thead>
         <tbody className="divide-y divide-white/5">
           {meetings.map((m, i) => (
-            <tr key={i} className="group hover:bg-white/5 transition-colors">
+            <tr key={i} className="group hover:bg-white/5 transition-colors align-top">
               <td className="py-3">
-                {m.status === 'success' ? (
-                  <CheckCircle2 className="w-5 h-5 text-green-400" />
-                ) : (
-                  <div className="relative flex items-center group/err">
-                    <XCircle className="w-5 h-5 text-red-400" />
-                    {m.error && (
-                      <div className="absolute left-7 bg-slate-800 text-red-200 text-xs p-2 rounded shadow-xl opacity-0 group-hover/err:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 border border-red-500/30">
-                        {m.error}
-                      </div>
-                    )}
-                  </div>
-                )}
+                {m.status === 'success'
+                  ? <CheckCircle2 className="w-5 h-5 text-green-400" />
+                  : <XCircle className="w-5 h-5 text-red-400" />}
               </td>
               <td className="py-3">
                 <div className="font-medium text-slate-200">{m.title || m.fileName}</div>
                 {m.title && <div className="text-xs text-slate-500">{m.fileName}</div>}
+                {m.error && (
+                  <div className="mt-1 max-w-md break-words text-xs leading-relaxed text-red-300/80">
+                    {m.error}
+                  </div>
+                )}
               </td>
               <td className="py-3">
                 <StepChips steps={m.steps} />
               </td>
-              <td className="py-3 text-slate-400">
+              <td className="py-3 text-slate-400 whitespace-nowrap">
                 {new Date(m.processedAt).toLocaleString('ko-KR')}
               </td>
               <td className="py-3 text-right">
