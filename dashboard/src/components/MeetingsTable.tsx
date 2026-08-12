@@ -89,7 +89,11 @@ export default function MeetingsTable({ meetings }: { meetings: any[] }) {
               <td className="py-3 text-right">
                 <div className="flex items-center justify-end gap-1 text-slate-300">
                   <Clock className="w-4 h-4 text-slate-500" />
-                  {m.durationSec ? `${m.durationSec.toFixed(1)}s` : '-'}
+                  {/* 기록 파일이 손상되거나 옛 형식이면 숫자가 아닐 수 있다.
+                      여기서 toFixed가 터지면 표가 아니라 화면 전체가 죽는다. */}
+                  {typeof m.durationSec === 'number' && isFinite(m.durationSec)
+                    ? `${m.durationSec.toFixed(1)}s`
+                    : '-'}
                 </div>
               </td>
             </tr>

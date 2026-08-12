@@ -26,11 +26,22 @@ export function startDashboardServer(port: number = 3000) {
   // Serve static files from React build
   const uiPath = path.join(process.cwd(), 'dashboard', 'dist');
   if (fs.existsSync(uiPath)) {
-    app.use(express.static(uiPath));
-    
+    // 자산 파일명에는 빌드 해시가 붙으므로 오래 캐시해도 안전하다. 반면 index.html은
+    // 그 해시를 가리키는 포인터라서 캐시되면 안 된다 — 배포로 해시가 바뀐 뒤에도
+    // 낡은 index.html이 살아있으면 없어진 번들을 요청해 화면이 하얗게 뜬다.
+    app.use(express.static(uiPath, {
+      setHeaders(res, filePath) {
+        res.setHeader(
+          'Cache-Control',
+          filePath.endsWith('index.html') ? 'no-cache' : 'public, max-age=31536000, immutable'
+        );
+      },
+    }));
+
     // SPA Fallback (compatible with Express 5 path-to-regexp v8)
     app.use((req, res, next) => {
       if (req.method === 'GET' && !req.path.startsWith('/api/')) {
+        res.setHeader('Cache-Control', 'no-cache');
         res.sendFile(path.join(uiPath, 'index.html'));
       } else {
         next();
