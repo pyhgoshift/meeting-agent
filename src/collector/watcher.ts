@@ -6,6 +6,26 @@ import PQueue from 'p-queue';
 // 지원 오디오 포맷
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.aac', '.opus', '.amr', '.awb', '.3gp']);
 
+// 폰의 녹음기 폴더에는 회의만 들어있지 않다. 통화 녹음이 같은 폴더에 섞여 동기화되면
+// 개인 통화가 전사되어 슬랙·노션·시트로 전부 퍼진다. 폴더 이름이 아니라 파일 이름으로
+// 걸러야 한다 — 삼성 기본 녹음기는 '통화 녹음 홍길동_251213_113258.m4a' 형태로 저장한다.
+// 구분자는 공백일 수도 _ 나 - 일 수도 있다 (call_recording_2026.m4a 같은 이름)
+const DEFAULT_IGNORE_NAME = /통화[\s_-]*녹음|call[\s_-]*recording|recording[\s_-]*call|voice[\s_-]*call/i;
+
+function buildIgnorePattern(): RegExp {
+  const custom = process.env.IGNORE_FILE_PATTERN?.trim();
+  if (!custom) return DEFAULT_IGNORE_NAME;
+  try {
+    return new RegExp(custom, 'i');
+  } catch (e) {
+    // 잘못된 정규식으로 컨테이너가 재시작 루프에 빠지면 안 된다
+    console.error(`⚠️ IGNORE_FILE_PATTERN 이 올바른 정규식이 아닙니다. 기본값을 사용합니다: ${(e as Error).message}`);
+    return DEFAULT_IGNORE_NAME;
+  }
+}
+
+const IGNORE_NAME = buildIgnorePattern();
+
 // 처리 완료 파일 추적 (재처리 방지)
 const processed = new Set<string>();
 
@@ -69,8 +89,15 @@ export function startWatcher(
     if (!AUDIO_EXTENSIONS.has(ext)) return;
     if (processed.has(filePath)) return;
 
-    processed.add(filePath);
     const fileName = path.basename(filePath);
+
+    if (IGNORE_NAME.test(fileName)) {
+      processed.add(filePath); // 매 스캔마다 같은 로그가 반복되지 않게 기억해 둔다
+      console.log(`⏭️  건너뜀 (통화 녹음으로 판단): ${fileName}`);
+      return;
+    }
+
+    processed.add(filePath);
     console.log(`\n🎙️  새 파일 감지: ${fileName}`);
 
     queue.add(async () => {
