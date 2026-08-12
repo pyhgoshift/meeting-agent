@@ -8,7 +8,7 @@ import { sendMeetingResult } from './distributor/slack.js';
 import { saveMeetingToNotion } from './distributor/notion.js';
 import { saveMeetingToGSheets } from './distributor/gsheets.js';
 import { startDashboardServer } from './dashboard/server.js';
-import { appendHistoryRecord, type DistributionStep } from './dashboard/history.js';
+import { appendHistoryRecord, readHistory, type DistributionStep } from './dashboard/history.js';
 import { saveMeetingToCalendar } from './distributor/gcal.js';
 
 /** 배포처 호출을 감싸 결과를 steps에 남긴다. 실패 시 예외는 그대로 올려보내
@@ -29,6 +29,9 @@ async function track<T>(
 }
 
 const WATCH_DIR = process.env.WATCH_DIR ?? './recordings';
+
+/** 같은 파일을 몇 번까지 다시 시도할지. 초과하면 .failed/ 로 격리한다. */
+const MAX_ATTEMPTS = 3;
 
 if (!fs.existsSync(WATCH_DIR)) {
   fs.mkdirSync(WATCH_DIR, { recursive: true });
@@ -111,7 +114,28 @@ startWatcher(WATCH_DIR, async (filePath: string) => {
       durationSec: Number(elapsed),
       steps
     });
-    
+
+    // 실패하면 파일이 아카이브되지 않고 감시 폴더에 남는다. 워처는 시작할 때 폴더를
+    // 다시 훑으므로(ignoreInitial: false), 계속 실패하는 파일은 컨테이너가 재시작될
+    // 때마다 음성 변환과 AI 분석 비용을 다시 지불하며 무한히 재처리된다.
+    // 설정 오류처럼 저절로 낫지 않는 실패는 몇 번 시도한 뒤 손을 떼야 한다.
+    const failures = readHistory(WATCH_DIR, 200)
+      .filter(r => r.fileName === fileName && r.status === 'error').length;
+
+    if (failures >= MAX_ATTEMPTS) {
+      const failedDir = path.join(WATCH_DIR, '.failed');
+      try {
+        if (!fs.existsSync(failedDir)) fs.mkdirSync(failedDir, { recursive: true });
+        fs.renameSync(filePath, path.join(failedDir, fileName));
+        console.error(`⛔ ${failures}회 실패 — 재시도를 멈추고 .failed/ 로 옮겼습니다: ${fileName}`);
+        console.error(`   원인을 고친 뒤 파일을 감시 폴더로 되돌리면 다시 처리됩니다.`);
+      } catch (moveErr) {
+        console.error(`⚠️ .failed/ 이동 실패:`, (moveErr as Error).message);
+      }
+      return; // 재처리 루프를 끊는다
+    }
+
+    console.error(`   재시도 예정 (${failures}/${MAX_ATTEMPTS}회 실패)`);
     throw err; // watcher가 재처리 허용하도록
   }
 });

@@ -10,6 +10,31 @@ function rt(content: string) {
   return [{ type: 'text' as const, text: { content: content.slice(0, 2000) } }];
 }
 
+/**
+ * Notion의 date 속성은 빈 문자열을 거부한다("should be a valid ISO 8601 date
+ * string, instead was ``"). 그런데 분석 프롬프트는 회의 일시를 유추할 수 없으면
+ * 빈 문자열을 반환하라고 지시하고 있어, 일시가 안 잡히는 회의는 전부 여기서 막혔다.
+ * (예전 코드는 ?? 로만 걸러서 ""를 통과시켰다 — ""는 nullish가 아니다.)
+ *
+ * 그래서 truthy 여부가 아니라 실제로 날짜로 읽히는지까지 확인하고,
+ * 아무 후보도 쓸 수 없으면 오늘 날짜로 떨어뜨린다.
+ */
+function resolveMeetingDate(analysis: MeetingAnalysis): string {
+  const candidates = [
+    analysis.datetime?.split(' ')[0],
+    analysis.schedules?.find((s) => s.date)?.date,
+  ];
+
+  for (const raw of candidates) {
+    const v = raw?.trim();
+    if (v && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(new Date(v).getTime())) {
+      return v;
+    }
+  }
+
+  return new Date().toISOString().split('T')[0];
+}
+
 // ─── 회의 결과 → Notion DB 저장 ─────────────────────────────────
 export async function saveMeetingToNotion(
   analysis: MeetingAnalysis,
@@ -17,11 +42,7 @@ export async function saveMeetingToNotion(
   durationSec: number,
   rawText: string = '',
 ): Promise<string> {
-  // 날짜: schedules에서 추출, 없으면 오늘
-  const meetingDate =
-    analysis.datetime?.split(' ')[0] ??
-    analysis.schedules.find((s) => s.date)?.date ??
-    new Date().toISOString().split('T')[0];
+  const meetingDate = resolveMeetingDate(analysis);
 
   // 결정사항 텍스트
   const decisionsText = analysis.decisions.length
