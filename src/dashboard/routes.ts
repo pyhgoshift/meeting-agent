@@ -1,11 +1,20 @@
 import { Router, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { verifyPassword, makeSessionCookie, checkRateLimit, requireAuth } from './auth.js';
 import { readHistory } from './history.js';
 import { getWatcherStatus } from '../collector/watcher.js';
 
 export const dashboardRouter = Router();
+
+// 접근 통제는 Cloudflare Access가 엣지에서 끝낸다(이메일 OTP). 컨테이너 포트는
+// 어디에도 공개돼 있지 않고(meeting-net 안에서 cloudflared만 접근 가능),
+// 그래서 여기 도달한 요청은 이미 인증을 통과한 것으로 본다.
+//
+// Access는 인증된 사용자의 이메일을 헤더로 실어 보낸다. 누가 설정을 바꿨는지
+// 남겨두면 나중에 추적이 되므로 쓰기 요청에서만 기록한다.
+function accessUser(req: Request): string {
+  return (req.headers['cf-access-authenticated-user-email'] as string) || '(Access 헤더 없음)';
+}
 
 // 컨테이너가 --env-file로 실제 사용하는 .env가 있는 곳.
 // deploy.sh가 배포 디렉토리를 여기에 읽기 전용으로 마운트한다.
@@ -64,42 +73,7 @@ const writeFileSafe = (watchDir: string, filename: string, content: string) => {
   fs.writeFileSync(filepath, content, 'utf-8');
 };
 
-dashboardRouter.post('/login', (req: Request, res: Response): void => {
-  const ip = req.ip || req.socket.remoteAddress || 'unknown';
-  if (!checkRateLimit(ip)) {
-    res.status(429).json({ error: 'Too many login attempts. Try again later.' });
-    return;
-  }
-
-  const { password } = req.body;
-  const expectedPassword = process.env.DASHBOARD_PASSWORD;
-  const secret = process.env.DASHBOARD_SESSION_SECRET;
-
-  if (!expectedPassword || !secret) {
-    res.status(503).json({ error: 'Security configuration missing' });
-    return;
-  }
-
-  if (verifyPassword(password, expectedPassword)) {
-    const cookie = makeSessionCookie(secret);
-    res.cookie('session', cookie, { 
-      httpOnly: true, 
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 1000 * 60 * 60 * 24 * 7 // 7 days
-    });
-    res.json({ success: true });
-  } else {
-    res.status(401).json({ error: 'Invalid password' });
-  }
-});
-
-dashboardRouter.post('/logout', (req: Request, res: Response) => {
-  res.clearCookie('session');
-  res.json({ success: true });
-});
-
-dashboardRouter.get('/status', requireAuth, (req: Request, res: Response) => {
+dashboardRouter.get('/status', (req: Request, res: Response) => {
   const watchDir = process.env.WATCH_DIR ?? './recordings';
   const watcherStatus = getWatcherStatus();
   const history = readHistory(watchDir, 1);
@@ -113,7 +87,7 @@ dashboardRouter.get('/status', requireAuth, (req: Request, res: Response) => {
   });
 });
 
-dashboardRouter.get('/meetings', requireAuth, (req: Request, res: Response) => {
+dashboardRouter.get('/meetings', (req: Request, res: Response) => {
   const watchDir = process.env.WATCH_DIR ?? './recordings';
   const limit = parseInt(req.query.limit as string) || 50;
   const history = readHistory(watchDir, limit);
@@ -124,7 +98,7 @@ dashboardRouter.get('/meetings', requireAuth, (req: Request, res: Response) => {
   });
 });
 
-dashboardRouter.get('/config', requireAuth, (req: Request, res: Response) => {
+dashboardRouter.get('/config', (req: Request, res: Response) => {
   const watchDir = process.env.WATCH_DIR ?? './recordings';
   try {
     const prompt = readFileSafe(watchDir, 'meetingbot_prompt.txt');
@@ -140,15 +114,20 @@ dashboardRouter.get('/config', requireAuth, (req: Request, res: Response) => {
   }
 });
 
-dashboardRouter.post('/config', requireAuth, (req: Request, res: Response) => {
+dashboardRouter.post('/config', (req: Request, res: Response) => {
   const watchDir = process.env.WATCH_DIR ?? './recordings';
   try {
     // env는 의도적으로 받지 않는다. GET이 마스킹된 값을 돌려주므로 그대로 저장하면
     // 실제 키가 '****'로 덮여 버리고, 애초에 CONFIG_DIR은 읽기 전용으로 마운트된다.
     const { prompt, slackTemplate } = req.body;
 
-    if (prompt !== undefined) writeFileSafe(watchDir, 'meetingbot_prompt.txt', prompt);
-    if (slackTemplate !== undefined) writeFileSafe(watchDir, 'slack_template.txt', slackTemplate);
+    const changed: string[] = [];
+    if (prompt !== undefined) { writeFileSafe(watchDir, 'meetingbot_prompt.txt', prompt); changed.push('프롬프트'); }
+    if (slackTemplate !== undefined) { writeFileSafe(watchDir, 'slack_template.txt', slackTemplate); changed.push('슬랙 템플릿'); }
+
+    if (changed.length > 0) {
+      console.log(`📝 [Dashboard] ${changed.join(', ')} 수정됨 — ${accessUser(req)}`);
+    }
 
     res.json({ success: true });
   } catch (error) {

@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Save, Settings, FileText, MessageSquare, Activity, Loader2, LogOut, RefreshCw, Lock } from 'lucide-react';
+import { Save, Settings, FileText, MessageSquare, Activity, Loader2, RefreshCw, Lock } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { API_BASE, fetchWithAuth } from './api';
-import LoginForm from './components/LoginForm';
 import StatusPanel from './components/StatusPanel';
 import MeetingsTable from './components/MeetingsTable';
 
+// 접근 통제는 Cloudflare Access가 엣지에서 처리한다(이메일 OTP). 여기까지 온 요청은
+// 이미 인증을 통과했고, 컨테이너 포트는 어디에도 공개돼 있지 않아 터널 외 경로가 없다.
+// 그래서 대시보드 자체 로그인은 두지 않는다.
 function App() {
-  const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [activeTab, setActiveTab] = useState<'status' | 'prompt' | 'slack' | 'env'>('status');
   
   const [config, setConfig] = useState({ prompt: '', slackTemplate: '', env: '', envPath: '' });
@@ -18,21 +19,7 @@ function App() {
   const [loadingData, setLoadingData] = useState(true);
   const [loadError, setLoadError] = useState('');
 
-  const checkAuth = async () => {
-    try {
-      await fetchWithAuth(`${API_BASE}/api/status`);
-      setAuthenticated(true);
-    } catch {
-      setAuthenticated(false);
-    }
-  };
-
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
   const loadData = async () => {
-    if (!authenticated) return;
     setLoadingData(true);
     try {
       const [confRes, statRes, meetRes] = await Promise.all([
@@ -57,30 +44,27 @@ function App() {
       setStatus(statData?.data?.watcher ?? null);
       setMeetings(Array.isArray(meetData?.data) ? meetData.data : []);
     } catch (e) {
-      if ((e as Error).message === 'Unauthorized') setAuthenticated(false);
-      else setLoadError((e as Error).message);
+      setLoadError((e as Error).message);
     }
     setLoadingData(false);
   };
 
   useEffect(() => {
-    if (authenticated) {
-      loadData();
-      const interval = setInterval(() => {
-        if (activeTab === 'status') {
-          fetchWithAuth(`${API_BASE}/api/status`)
-            .then(res => res.json())
-            .then(d => setStatus(d.data.watcher))
-            .catch(() => {});
-          fetchWithAuth(`${API_BASE}/api/meetings?limit=50`)
-            .then(res => res.json())
-            .then(d => setMeetings(d.data))
-            .catch(() => {});
-        }
-      }, 15000);
-      return () => clearInterval(interval);
-    }
-  }, [authenticated, activeTab]);
+    loadData();
+    const interval = setInterval(() => {
+      if (activeTab === 'status') {
+        fetchWithAuth(`${API_BASE}/api/status`)
+          .then(res => res.json())
+          .then(d => setStatus(d?.data?.watcher ?? null))
+          .catch(() => {});
+        fetchWithAuth(`${API_BASE}/api/meetings?limit=50`)
+          .then(res => res.json())
+          .then(d => setMeetings(Array.isArray(d?.data) ? d.data : []))
+          .catch(() => {});
+      }
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [activeTab]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -93,26 +77,10 @@ function App() {
       });
       alert('저장 및 백업되었습니다! 🚀');
     } catch (e) {
-      if ((e as Error).message === 'Unauthorized') setAuthenticated(false);
-      else alert('저장 실패!');
+      alert(`저장 실패: ${(e as Error).message}`);
     }
     setSaving(false);
   };
-
-  const handleLogout = async () => {
-    try {
-      await fetchWithAuth(`${API_BASE}/api/logout`, { method: 'POST' });
-    } catch (e) {}
-    setAuthenticated(false);
-  };
-
-  if (authenticated === null) {
-    return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white"><Loader2 className="animate-spin w-12 h-12 text-blue-500" /></div>;
-  }
-
-  if (authenticated === false) {
-    return <LoginForm onLogin={() => setAuthenticated(true)} />;
-  }
 
   const isEditor = activeTab !== 'status';
   const canSave = activeTab === 'prompt' || activeTab === 'slack';
@@ -139,9 +107,6 @@ function App() {
           </div>
           
           <div className="flex items-center gap-3">
-            <button onClick={handleLogout} className="p-3 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 transition-colors border border-white/5">
-              <LogOut className="w-5 h-5" />
-            </button>
             {canSave && (
               <button
                 onClick={handleSave}
