@@ -8,8 +8,25 @@ import { sendMeetingResult } from './distributor/slack.js';
 import { saveMeetingToNotion } from './distributor/notion.js';
 import { saveMeetingToGSheets } from './distributor/gsheets.js';
 import { startDashboardServer } from './dashboard/server.js';
-import { appendHistoryRecord } from './dashboard/history.js';
+import { appendHistoryRecord, type DistributionStep } from './dashboard/history.js';
 import { saveMeetingToCalendar } from './distributor/gcal.js';
+
+/** 배포처 호출을 감싸 결과를 steps에 남긴다. 실패 시 예외는 그대로 올려보내
+ *  기존 재처리 동작(watcher가 파일을 다시 집는다)을 바꾸지 않는다. */
+async function track<T>(
+  steps: DistributionStep[],
+  name: DistributionStep['name'],
+  fn: () => Promise<T>
+): Promise<T> {
+  try {
+    const result = await fn();
+    steps.push({ name, status: 'ok' });
+    return result;
+  } catch (e) {
+    steps.push({ name, status: 'fail', detail: (e as Error).message });
+    throw e;
+  }
+}
 
 const WATCH_DIR = process.env.WATCH_DIR ?? './recordings';
 
@@ -24,6 +41,7 @@ console.log('─'.repeat(50));
 startWatcher(WATCH_DIR, async (filePath: string) => {
   const fileName = path.basename(filePath);
   const startTime = Date.now();
+  const steps: DistributionStep[] = [];
 
   try {
     console.log(`\n[1/4] 🎙️  음성 변환 중... (${fileName})`);
@@ -40,21 +58,24 @@ startWatcher(WATCH_DIR, async (filePath: string) => {
     const analysis = await analyzeMeeting(text, customPrompt);
     console.log(`       ✅ 완료`);
 
-    console.log(`[3/4] 💬 Slack 전송 중...`);
-    await sendMeetingResult(analysis, fileName);
+    console.log(`[3/6] 💬 Slack 전송 중...`);
+    await track(steps, 'slack', () => sendMeetingResult(analysis, fileName));
     console.log(`       ✅ 완료`);
 
-    console.log(`[4/4] 📝 Notion 저장 중...`);
-    const notionUrl = await saveMeetingToNotion(analysis, fileName, durationSec, text);
+    console.log(`[4/6] 📝 Notion 저장 중...`);
+    const notionUrl = await track(steps, 'notion', () =>
+      saveMeetingToNotion(analysis, fileName, durationSec, text));
     console.log(`       ✅ 완료 → ${notionUrl}`);
 
     console.log(`[5/6] 📊 구글 시트 누적 기록 중...`);
-    await saveMeetingToGSheets(analysis, fileName);
+    await track(steps, 'sheets', () => saveMeetingToGSheets(analysis, fileName));
     console.log(`       ✅ 완료`);
 
     console.log(`[6/6] 🗓️ 구글 캘린더 연동 중...`);
-    await saveMeetingToCalendar(analysis, fileName);
-    console.log(`       ✅ 완료`);
+    // 캘린더는 예외를 던지지 않고 결과를 돌려준다 (일정 하나 때문에 재처리하지 않기 위해)
+    const calendar = await saveMeetingToCalendar(analysis, fileName);
+    steps.push({ name: 'calendar', status: calendar.status, detail: calendar.detail });
+    console.log(`       ${calendar.status === 'ok' ? '✅' : calendar.status === 'skip' ? '⏭️' : '❌'} ${calendar.detail ?? ''}`);
 
     // ─── 폰 용량 확보용 자동 아카이브 ───
     const archiveDir = path.join(WATCH_DIR, '.archive');
@@ -74,19 +95,21 @@ startWatcher(WATCH_DIR, async (filePath: string) => {
       title: analysis?.title,
       processedAt: new Date().toISOString(),
       status: 'success',
-      durationSec: Number(elapsed)
+      durationSec: Number(elapsed),
+      steps
     });
 
   } catch (err) {
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.error(`\n❌ 오류 발생 [${fileName}]:`, (err as Error).message);
-    
+
     appendHistoryRecord(WATCH_DIR, {
       fileName,
       processedAt: new Date().toISOString(),
       status: 'error',
       error: (err as Error).message,
-      durationSec: Number(elapsed)
+      durationSec: Number(elapsed),
+      steps
     });
     
     throw err; // watcher가 재처리 허용하도록

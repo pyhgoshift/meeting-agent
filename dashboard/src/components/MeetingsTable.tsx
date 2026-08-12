@@ -1,5 +1,42 @@
 import { Clock, CheckCircle2, XCircle, FileAudio } from 'lucide-react';
 
+const STEP_LABEL: Record<string, string> = {
+  slack: 'Slack',
+  notion: 'Notion',
+  sheets: '시트',
+  calendar: '캘린더',
+};
+
+// 배포처별 결과 칩. 전체 상태가 '성공'이어도 캘린더만 실패할 수 있어 따로 보여준다.
+function StepChips({ steps }: { steps?: { name: string; status: string; detail?: string }[] }) {
+  if (!steps || steps.length === 0) return <span className="text-xs text-slate-600">-</span>;
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {steps.map((s, i) => {
+        const style =
+          s.status === 'ok' ? 'bg-green-500/15 text-green-300 border-green-500/25'
+          : s.status === 'fail' ? 'bg-red-500/15 text-red-300 border-red-500/30'
+          : 'bg-slate-500/15 text-slate-400 border-slate-500/25';
+        const mark = s.status === 'ok' ? '✓' : s.status === 'fail' ? '✕' : '–';
+
+        return (
+          <span key={i} className="group/step relative">
+            <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium ${style}`}>
+              {mark} {STEP_LABEL[s.name] ?? s.name}
+            </span>
+            {s.detail && (
+              <span className="pointer-events-none absolute bottom-full left-0 z-50 mb-1 hidden w-max max-w-md whitespace-normal rounded border border-white/10 bg-slate-800 p-2 text-xs text-slate-200 shadow-xl group-hover/step:block">
+                {s.detail}
+              </span>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function MeetingsTable({ meetings }: { meetings: any[] }) {
   if (!meetings || meetings.length === 0) {
     return (
@@ -17,6 +54,7 @@ export default function MeetingsTable({ meetings }: { meetings: any[] }) {
           <tr className="text-slate-400 border-b border-white/10">
             <th className="pb-3 pt-2 font-medium">상태</th>
             <th className="pb-3 pt-2 font-medium">회의명 (파일)</th>
+            <th className="pb-3 pt-2 font-medium">배포 결과</th>
             <th className="pb-3 pt-2 font-medium">처리 시각</th>
             <th className="pb-3 pt-2 font-medium text-right">소요 시간</th>
           </tr>
@@ -41,6 +79,9 @@ export default function MeetingsTable({ meetings }: { meetings: any[] }) {
               <td className="py-3">
                 <div className="font-medium text-slate-200">{m.title || m.fileName}</div>
                 {m.title && <div className="text-xs text-slate-500">{m.fileName}</div>}
+              </td>
+              <td className="py-3">
+                <StepChips steps={m.steps} />
               </td>
               <td className="py-3 text-slate-400">
                 {new Date(m.processedAt).toLocaleString('ko-KR')}

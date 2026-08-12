@@ -1,6 +1,13 @@
 import fs from 'fs';
 import path from 'path';
 
+/** 배포처 한 곳의 처리 결과. skip은 설정이 없거나 보낼 내용이 없어 건너뛴 경우다. */
+export interface DistributionStep {
+  name: 'slack' | 'notion' | 'sheets' | 'calendar';
+  status: 'ok' | 'fail' | 'skip';
+  detail?: string; // 실패 사유 또는 건너뛴 이유
+}
+
 export interface MeetingHistoryRecord {
   fileName: string;
   title?: string;
@@ -8,6 +15,8 @@ export interface MeetingHistoryRecord {
   status: 'success' | 'error';
   error?: string;
   durationSec: number;
+  /** 배포처별 결과. 전체가 'success'여도 캘린더만 조용히 실패할 수 있어서 따로 남긴다. */
+  steps?: DistributionStep[];
 }
 
 export function appendHistoryRecord(watchDir: string, record: MeetingHistoryRecord): void {
