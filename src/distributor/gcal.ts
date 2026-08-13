@@ -1,6 +1,7 @@
 import { calendar, auth } from '@googleapis/calendar';
 import fs from 'fs';
 import type { MeetingAnalysis } from '../extract/analyzer.js';
+import { parseKoreanDate } from '../utils/korean-date.js';
 
 const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
 const KEY_PATH = process.env.GOOGLE_SERVICE_KEY_PATH;
@@ -10,7 +11,11 @@ const KEY_PATH = process.env.GOOGLE_SERVICE_KEY_PATH;
  *  대시보드에 남긴다. 예전엔 여기서 조용히 삼켜서 실패를 알 방법이 로그밖에 없었다. */
 export type CalendarOutcome = { status: 'ok' | 'fail' | 'skip'; detail?: string };
 
-export async function saveMeetingToCalendar(analysis: MeetingAnalysis, fileName: string): Promise<CalendarOutcome> {
+export async function saveMeetingToCalendar(
+  analysis: MeetingAnalysis,
+  fileName: string,
+  recordedAt: Date = new Date(),
+): Promise<CalendarOutcome> {
   if (!CALENDAR_ID || !KEY_PATH) {
     const detail = '설정 누락 (GOOGLE_CALENDAR_ID / GOOGLE_SERVICE_KEY_PATH)';
     console.log(`       ⚠️ 구글 캘린더 ${detail} — 연동을 건너뜁니다.`);
@@ -50,16 +55,17 @@ export async function saveMeetingToCalendar(analysis: MeetingAnalysis, fileName:
   }
 
   // 2. 일반 일정 (schedules)
+  // 날짜 칸이 비어 있어도 넣는다. 모델이 날짜를 제목에만 적어두는 일이 잦아서,
+  // 여기서 걸러버리면 아래의 '제목에서 날짜 찾기'가 시도조차 되지 않는다.
   if (analysis.schedules && analysis.schedules.length > 0) {
     analysis.schedules.forEach(s => {
-      if (s.date) {
-        eventsToCreate.push({
-          title: s.title,
-          date: s.date,
-          description: `참석자: ${s.attendees?.join(', ') || '미정'}\n출처: ${fileName}`,
-          location: '',
-        });
-      }
+      if (!s.title && !s.date) return;
+      eventsToCreate.push({
+        title: s.title,
+        date: s.date ?? '',
+        description: `참석자: ${s.attendees?.join(', ') || '미정'}\n출처: ${fileName}`,
+        location: '',
+      });
     });
   }
 
@@ -73,20 +79,19 @@ export async function saveMeetingToCalendar(analysis: MeetingAnalysis, fileName:
   const failures: string[] = [];
 
   for (const event of eventsToCreate) {
-    // date가 'YYYY-MM-DD HH:MM' 형태인지 파싱
-    let startDate: Date;
-    let endDate: Date;
-    
-    try {
-      startDate = new Date(event.date);
-      if (isNaN(startDate.getTime())) { skippedDate++; continue; } // 유효하지 않은 날짜 건너뛰기
+    // 날짜 칸을 먼저 보고, 비어 있으면 제목에서 찾는다.
+    // 모델이 "26년 8월 13일에 다시 만나기로 하자"처럼 제목에만 날짜를 넣는 일이 잦다.
+    const parsed = parseKoreanDate(event.date, recordedAt) ?? parseKoreanDate(event.title, recordedAt);
 
-      // 기본적으로 1시간짜리 일정으로 등록
-      endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
-    } catch (e) {
-      skippedDate++;
-      continue; // 파싱 실패 시 건너뛰기
-    }
+    if (!parsed) { skippedDate++; continue; }
+
+    // 시각이 없으면 오전 9시로 잡는다 (종일 일정보다 눈에 띄고, 자정보다 자연스럽다)
+    const [y, mo, d] = parsed.date.split('-').map(Number);
+    const [h, mi] = (parsed.time ?? '09:00').split(':').map(Number);
+
+    // 적힌 시각은 한국시간이므로 9시간을 빼야 실제 시점이 된다
+    const startDate = new Date(Date.UTC(y, mo - 1, d, h, mi) - 9 * 60 * 60 * 1000);
+    const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
 
     try {
       await cal.events.insert({
@@ -122,7 +127,7 @@ export async function saveMeetingToCalendar(analysis: MeetingAnalysis, fileName:
     return { status: 'fail', detail: `${created + failures.length}건 중 ${failures.length}건 실패 · ${failures[0]}` };
   }
   if (created === 0) {
-    return { status: 'skip', detail: `날짜를 해석할 수 없는 일정 ${skippedDate}건만 있었음` };
+    return { status: 'skip', detail: `날짜를 읽을 수 없는 일정 ${skippedDate}건만 있었음 (예: '다음 주쯤'). 검토 화면에서 날짜를 적어주면 등록됩니다` };
   }
   return {
     status: 'ok',

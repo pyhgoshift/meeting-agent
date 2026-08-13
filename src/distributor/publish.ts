@@ -59,7 +59,7 @@ export async function publishMeeting(input: PublishInput): Promise<PublishResult
   console.log(`       ✅ 완료`);
 
   console.log(`[4/4] 🗓️ 구글 캘린더 연동 중...`);
-  const calendar = await saveMeetingToCalendar(analysis, fileName);
+  const calendar = await saveMeetingToCalendar(analysis, fileName, recordedAt);
   steps.push({ name: 'calendar', status: calendar.status, detail: calendar.detail });
   console.log(`       ${calendar.status === 'ok' ? '✅' : calendar.status === 'skip' ? '⏭️' : '❌'} ${calendar.detail ?? ''}`);
 
