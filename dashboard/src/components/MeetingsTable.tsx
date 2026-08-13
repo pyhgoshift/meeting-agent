@@ -15,7 +15,9 @@ interface Step { name: string; status: string; detail?: string }
 function StepChips({ steps }: { steps?: Step[] }) {
   if (!steps || steps.length === 0) return <span className="text-xs text-slate-600">-</span>;
 
-  const failures = steps.filter(s => s.status === 'fail' && s.detail);
+  // 실패뿐 아니라 건너뜀 사유도 적는다. '–' 만 보고는 왜 안 갔는지 알 수 없어서
+  // (일정이 없어서인지, 설정이 빠져서인지) 결국 물어보게 된다.
+  const notes = steps.filter(s => (s.status === 'fail' || s.status === 'skip') && s.detail);
 
   return (
     <div className="space-y-1.5">
@@ -39,8 +41,13 @@ function StepChips({ steps }: { steps?: Step[] }) {
         })}
       </div>
 
-      {failures.map((s, i) => (
-        <div key={i} className="max-w-md break-words text-xs leading-relaxed text-red-300/80">
+      {notes.map((s, i) => (
+        <div
+          key={i}
+          className={`max-w-md break-words text-xs leading-relaxed ${
+            s.status === 'fail' ? 'text-red-300/80' : 'text-slate-500'
+          }`}
+        >
           <span className="font-semibold">{STEP_LABEL[s.name] ?? s.name}:</span> {s.detail}
         </div>
       ))}
