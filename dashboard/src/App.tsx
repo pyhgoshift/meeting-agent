@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { API_BASE, fetchWithAuth } from './api';
 import StatusPanel from './components/StatusPanel';
 import MeetingsTable from './components/MeetingsTable';
+import LogPanel from './components/LogPanel';
 
 // 접근 통제는 Cloudflare Access가 엣지에서 처리한다(이메일 OTP). 여기까지 온 요청은
 // 이미 인증을 통과했고, 컨테이너 포트는 어디에도 공개돼 있지 않아 터널 외 경로가 없다.
@@ -212,6 +213,7 @@ function App() {
                     )}
                   </div>
                   <MeetingsTable meetings={meetings} />
+                  <LogPanel />
                 </>
               ) : (
                 <>

@@ -10,6 +10,11 @@ import { saveMeetingToGSheets } from './distributor/gsheets.js';
 import { startDashboardServer } from './dashboard/server.js';
 import { appendHistoryRecord, readHistory, type DistributionStep } from './dashboard/history.js';
 import { saveMeetingToCalendar } from './distributor/gcal.js';
+import { captureConsole } from './utils/logbuffer.js';
+
+// 대시보드가 진행 상황을 보여줄 수 있도록 콘솔 출력을 버퍼에 함께 담는다.
+// 첫 로그가 찍히기 전에 걸어야 시작 메시지부터 남는다.
+captureConsole();
 
 /** 배포처 호출을 감싸 결과를 steps에 남긴다. 실패 시 예외는 그대로 올려보내
  *  기존 재처리 동작(watcher가 파일을 다시 집는다)을 바꾸지 않는다. */

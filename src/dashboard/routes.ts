@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { readHistory, clearHistory } from './history.js';
+import { readLogs } from '../utils/logbuffer.js';
 import { getWatcherStatus } from '../collector/watcher.js';
 
 export const dashboardRouter = Router();
@@ -96,6 +97,11 @@ dashboardRouter.get('/meetings', (req: Request, res: Response) => {
     success: true,
     data: history
   });
+});
+
+dashboardRouter.get('/logs', (req: Request, res: Response) => {
+  const limit = parseInt(req.query.limit as string) || 200;
+  res.json({ success: true, data: readLogs(limit) });
 });
 
 dashboardRouter.delete('/meetings', (req: Request, res: Response) => {
