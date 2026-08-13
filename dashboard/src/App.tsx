@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Save, Settings, FileText, MessageSquare, Activity, Loader2, RefreshCw, Lock } from 'lucide-react';
+import { Save, Settings, FileText, MessageSquare, Activity, Loader2, RefreshCw, Lock, Trash2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { API_BASE, fetchWithAuth } from './api';
 import StatusPanel from './components/StatusPanel';
@@ -65,6 +65,19 @@ function App() {
     }, 15000);
     return () => clearInterval(interval);
   }, [activeTab]);
+
+  const handleClearHistory = async () => {
+    // 되돌릴 수 없는 동작이라 한 번 물어본다. 다만 지워지는 건 이 목록뿐이라는 걸
+    // 분명히 해둔다 — 슬랙·노션·시트의 회의록과 녹음 원본은 그대로 남는다.
+    if (!confirm('처리 기록 목록을 비웁니다.\n\n슬랙·노션·시트의 회의록과 녹음 파일은 그대로 남습니다.\n계속할까요?')) return;
+
+    try {
+      await fetchWithAuth(`${API_BASE}/api/meetings`, { method: 'DELETE' });
+      setMeetings([]);
+    } catch (e) {
+      alert(`기록 삭제 실패: ${(e as Error).message}`);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -186,7 +199,18 @@ function App() {
               ) : activeTab === 'status' ? (
                 <>
                   <StatusPanel status={status} />
-                  <h3 className="text-sm font-bold text-slate-400 mb-3 pl-1">최근 처리 내역</h3>
+                  <div className="mb-3 flex items-center justify-between pl-1">
+                    <h3 className="text-sm font-bold text-slate-400">최근 처리 내역</h3>
+                    {meetings.length > 0 && (
+                      <button
+                        onClick={handleClearHistory}
+                        className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-slate-400 transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        기록 지우기
+                      </button>
+                    )}
+                  </div>
                   <MeetingsTable meetings={meetings} />
                 </>
               ) : (

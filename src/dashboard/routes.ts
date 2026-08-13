@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { readHistory } from './history.js';
+import { readHistory, clearHistory } from './history.js';
 import { getWatcherStatus } from '../collector/watcher.js';
 
 export const dashboardRouter = Router();
@@ -96,6 +96,17 @@ dashboardRouter.get('/meetings', (req: Request, res: Response) => {
     success: true,
     data: history
   });
+});
+
+dashboardRouter.delete('/meetings', (req: Request, res: Response) => {
+  const watchDir = process.env.WATCH_DIR ?? './recordings';
+  try {
+    clearHistory(watchDir);
+    console.log(`🧹 [Dashboard] 처리 기록을 비웠습니다 — ${accessUser(req)}`);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
 });
 
 dashboardRouter.get('/config', (req: Request, res: Response) => {

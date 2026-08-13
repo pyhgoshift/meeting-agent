@@ -46,6 +46,15 @@ export function appendHistoryRecord(watchDir: string, record: MeetingHistoryReco
   }
 }
 
+/**
+ * 처리 기록을 비운다. 지워지는 건 대시보드가 보여주는 목록뿐이고,
+ * 슬랙·노션·시트에 남은 실제 회의록이나 .archive 의 녹음 원본은 건드리지 않는다.
+ */
+export function clearHistory(watchDir: string): void {
+  const historyPath = path.join(watchDir, '.history.json');
+  if (fs.existsSync(historyPath)) fs.unlinkSync(historyPath);
+}
+
 export function readHistory(watchDir: string, limit: number = 50): MeetingHistoryRecord[] {
   const historyPath = path.join(watchDir, '.history.json');
   if (!fs.existsSync(historyPath)) return [];
