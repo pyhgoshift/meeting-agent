@@ -9,8 +9,11 @@
 #   sudo /volume1/docker/meeting-agent/scripts/slack-clean.sh "통화 녹음"
 #   sudo /volume1/docker/meeting-agent/scripts/slack-clean.sh "통화 녹음" --delete
 #
-# ~/.profile 에 아래를 넣어두면 어디서든 slack-clean 으로 부를 수 있다:
-#   alias slack-clean='sudo /volume1/docker/meeting-agent/scripts/slack-clean.sh'
+# ~/.profile 에 아래를 넣어두면 어디서든 sldel 로 부를 수 있다:
+#   alias sldel='sudo /volume1/docker/meeting-agent/scripts/slack-clean.sh'
+#
+#   sldel "통화 녹음"            ← 목록만
+#   sldel "통화 녹음" --delete   ← 실제 삭제
 
 set -euo pipefail
 
