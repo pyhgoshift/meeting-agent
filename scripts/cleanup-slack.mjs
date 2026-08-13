@@ -6,15 +6,21 @@
  * 도구다. 슬랙 UI에서는 남이 올린(= 봇이 올린) 메시지를 지우기 어렵지만,
  * chat.delete 는 메시지를 올린 그 토큰으로 호출하면 지울 수 있다.
  *
- * 사용법 (NAS 배포 디렉토리에서):
- *   node scripts/cleanup-slack.mjs "통화 녹음"          ← 먼저 목록만 확인
- *   node scripts/cleanup-slack.mjs "통화 녹음" --delete  ← 실제 삭제
+ * 사용법 — NAS SSH 에서 컨테이너를 통해 실행한다(NAS 자체에는 node 가 없다).
+ * 배포 디렉토리가 컨테이너의 /app/config 로 마운트되어 있어 이 경로로 닿는다.
+ *
+ *   sudo docker exec meeting-agent node /app/config/scripts/cleanup-slack.mjs "통화 녹음"
+ *   sudo docker exec meeting-agent node /app/config/scripts/cleanup-slack.mjs "통화 녹음" --delete
  *
  * 인자로 준 문자열이 메시지 본문에 들어있으면 대상으로 잡는다.
- * 파일명 일부(예: 유은경)로 좁혀도 된다.
+ * 파일명 일부(예: 유은경)로 좁혀도 되고, "회의록 분석 완료" 로 전체를 훑어도 된다.
+ *
+ * 봇 토큰에 channels:history (비공개 채널이면 groups:history) 권한이 필요하다.
  */
 import fs from 'fs';
 import path from 'path';
+
+const USAGE = 'sudo docker exec meeting-agent node /app/config/scripts/cleanup-slack.mjs';
 
 // .env 를 직접 읽는다 (dotenv 의존성 없이 동작하도록)
 function loadEnv() {
@@ -41,8 +47,9 @@ if (!TOKEN || !CHANNEL) {
   process.exit(1);
 }
 if (!needle) {
-  console.error('사용법: node scripts/cleanup-slack.mjs "찾을문구" [--delete]');
-  console.error('예:    node scripts/cleanup-slack.mjs "통화 녹음"');
+  console.error(`사용법: ${USAGE} "찾을문구" [--delete]`);
+  console.error(`예:    ${USAGE} "통화 녹음"`);
+  console.error(`전체:  ${USAGE} "회의록 분석 완료"`);
   process.exit(1);
 }
 
@@ -102,7 +109,7 @@ for (const t of targets) {
 if (!doDelete) {
   console.log(`\n※ 아직 아무것도 지우지 않았습니다.`);
   console.log(`   위 목록이 맞으면 --delete 를 붙여 다시 실행하세요:`);
-  console.log(`   node scripts/cleanup-slack.mjs "${needle}" --delete`);
+  console.log(`   ${USAGE} "${needle}" --delete`);
   process.exit(0);
 }
 
