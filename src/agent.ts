@@ -4,35 +4,17 @@ import fs from 'fs';
 import { startWatcher } from './collector/watcher.js';
 import { transcribe } from './transcribe/whisper.js';
 import { analyzeMeeting } from './extract/analyzer.js';
-import { sendMeetingResult } from './distributor/slack.js';
-import { saveMeetingToNotion } from './distributor/notion.js';
-import { saveMeetingToGSheets } from './distributor/gsheets.js';
+import { publishMeeting } from './distributor/publish.js';
 import { startDashboardServer } from './dashboard/server.js';
+import { readSettings } from './dashboard/settings.js';
+import { makeDraftId, saveDraft } from './dashboard/pending.js';
 import { appendHistoryRecord, readHistory, type DistributionStep } from './dashboard/history.js';
-import { saveMeetingToCalendar } from './distributor/gcal.js';
 import { captureConsole } from './utils/logbuffer.js';
 import { resolveRecordedAt, formatKST } from './utils/recording-date.js';
 
 // 대시보드가 진행 상황을 보여줄 수 있도록 콘솔 출력을 버퍼에 함께 담는다.
 // 첫 로그가 찍히기 전에 걸어야 시작 메시지부터 남는다.
 captureConsole();
-
-/** 배포처 호출을 감싸 결과를 steps에 남긴다. 실패 시 예외는 그대로 올려보내
- *  기존 재처리 동작(watcher가 파일을 다시 집는다)을 바꾸지 않는다. */
-async function track<T>(
-  steps: DistributionStep[],
-  name: DistributionStep['name'],
-  fn: () => Promise<T>
-): Promise<T> {
-  try {
-    const result = await fn();
-    steps.push({ name, status: 'ok' });
-    return result;
-  } catch (e) {
-    steps.push({ name, status: 'fail', detail: (e as Error).message });
-    throw e;
-  }
-}
 
 const WATCH_DIR = process.env.WATCH_DIR ?? './recordings';
 
@@ -41,6 +23,15 @@ const MAX_ATTEMPTS = 3;
 
 if (!fs.existsSync(WATCH_DIR)) {
   fs.mkdirSync(WATCH_DIR, { recursive: true });
+}
+
+/** 처리가 끝난 녹음을 .archive 로 옮긴다 (폰 용량 확보 겸 재처리 방지). */
+function archiveRecording(filePath: string, fileName: string): void {
+  const archiveDir = path.join(WATCH_DIR, '.archive');
+  if (!fs.existsSync(archiveDir)) fs.mkdirSync(archiveDir, { recursive: true });
+  const archivePath = path.join(archiveDir, fileName);
+  fs.renameSync(filePath, archivePath);
+  console.log(`       📦 아카이브로 이동: ${archivePath}`);
 }
 
 console.log('🚀 Meeting Agent 시작');
@@ -72,33 +63,50 @@ startWatcher(WATCH_DIR, async (filePath: string) => {
     const analysis = await analyzeMeeting(text, customPrompt, recordedAt);
     console.log(`       ✅ 완료`);
 
-    console.log(`[3/6] 💬 Slack 전송 중...`);
-    await track(steps, 'slack', () => sendMeetingResult(analysis, fileName));
-    console.log(`       ✅ 완료`);
+    const { autoPublish } = readSettings(WATCH_DIR);
 
-    console.log(`[4/6] 📝 Notion 저장 중...`);
-    const notionUrl = await track(steps, 'notion', () =>
-      saveMeetingToNotion(analysis, fileName, durationSec, text));
-    console.log(`       ✅ 완료 → ${notionUrl}`);
+    if (!autoPublish) {
+      // 수동 전송 모드 — 초안만 남기고 배포는 사용자가 대시보드에서 지시한다.
+      // 초안을 먼저 안전하게 저장한 뒤에 음성을 옮긴다(순서가 반대면 초안 저장에
+      // 실패했을 때 전사본도 음성도 없이 아무것도 안 남는다).
+      const draftId = makeDraftId(fileName);
+      saveDraft(WATCH_DIR, {
+        id: draftId,
+        fileName,
+        recordedAt: recordedAt.toISOString(),
+        createdAt: new Date().toISOString(),
+        durationSec,
+        analysis,
+        transcript: text,
+      });
 
-    console.log(`[5/6] 📊 구글 시트 누적 기록 중...`);
-    await track(steps, 'sheets', () => saveMeetingToGSheets(analysis, fileName, recordedAt));
-    console.log(`       ✅ 완료`);
+      // 검토를 기다리는 동안 감시 폴더에 두면 재시작 때 같은 파일을 다시 전사한다
+      archiveRecording(filePath, fileName);
 
-    console.log(`[6/6] 🗓️ 구글 캘린더 연동 중...`);
-    // 캘린더는 예외를 던지지 않고 결과를 돌려준다 (일정 하나 때문에 재처리하지 않기 위해)
-    const calendar = await saveMeetingToCalendar(analysis, fileName);
-    steps.push({ name: 'calendar', status: calendar.status, detail: calendar.detail });
-    console.log(`       ${calendar.status === 'ok' ? '✅' : calendar.status === 'skip' ? '⏭️' : '❌'} ${calendar.detail ?? ''}`);
+      const held = ((Date.now() - startTime) / 1000).toFixed(1);
+      console.log(`\n📝 검토 대기로 보관했습니다 (자동 전송 꺼짐): ${analysis.title || fileName}`);
+      console.log(`   대시보드 [검토 대기] 탭에서 확인하고 전송하세요.`);
+      console.log('─'.repeat(50));
 
-    // ─── 폰 용량 확보용 자동 아카이브 ───
-    const archiveDir = path.join(WATCH_DIR, '.archive');
-    if (!fs.existsSync(archiveDir)) fs.mkdirSync(archiveDir, { recursive: true });
-    
-    const archivePath = path.join(archiveDir, fileName);
-    fs.renameSync(filePath, archivePath);
-    console.log(`[5/5] 📦 자동 아카이브 완료 (폰 용량 확보)`);
-    console.log(`       ✅ 이동됨: ${archivePath}`);
+      appendHistoryRecord(WATCH_DIR, {
+        fileName,
+        title: analysis?.title,
+        processedAt: new Date().toISOString(),
+        status: 'success',
+        durationSec: Number(held),
+        steps: [{ name: 'slack', status: 'skip', detail: '검토 대기 중 — 대시보드에서 전송' }],
+      });
+      return;
+    }
+
+    // 자동 전송 — 배포가 끝난 뒤에 아카이브한다. 먼저 옮겨버리면 배포가 실패했을 때
+    // 파일이 감시 폴더에 없어 재처리가 안 된다.
+    const { steps: published } = await publishMeeting({
+      analysis, fileName, durationSec, transcript: text, recordedAt,
+    });
+    steps.push(...published);
+
+    archiveRecording(filePath, fileName);
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`\n✨ 완료: ${fileName} (총 ${elapsed}초)`);
