@@ -6,21 +6,21 @@ import PQueue from 'p-queue';
 // 지원 오디오 포맷
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.m4a', '.wav', '.ogg', '.flac', '.aac', '.opus', '.amr', '.awb', '.3gp']);
 
-// 폰의 녹음기 폴더에는 회의만 들어있지 않다. 통화 녹음이 같은 폴더에 섞여 동기화되면
-// 개인 통화가 전사되어 슬랙·노션·시트로 전부 퍼진다. 폴더 이름이 아니라 파일 이름으로
-// 걸러야 한다 — 삼성 기본 녹음기는 '통화 녹음 홍길동_251213_113258.m4a' 형태로 저장한다.
-// 구분자는 공백일 수도 _ 나 - 일 수도 있다 (call_recording_2026.m4a 같은 이름)
-const DEFAULT_IGNORE_NAME = /통화[\s_-]*녹음|call[\s_-]*recording|recording[\s_-]*call|voice[\s_-]*call/i;
-
-function buildIgnorePattern(): RegExp {
+// 제외 기준은 '폴더'다. Voice Recorder 에 들어온 파일은 통화 녹음이든 회의든 전부
+// 사용자가 올린 것이므로 처리한다. 폰이 자동으로 백업하는 recording/Call 만 제외하며,
+// 그건 아래 chokidar 의 ignored 규칙이 담당한다. 파일 이름으로는 거르지 않는다.
+//
+// 특정 이름을 빼야 할 일이 생기면 .env 에 IGNORE_FILE_PATTERN=정규식 을 넣으면 된다.
+// 기본값은 '아무것도 거르지 않음'이다.
+function buildIgnorePattern(): RegExp | null {
   const custom = process.env.IGNORE_FILE_PATTERN?.trim();
-  if (!custom) return DEFAULT_IGNORE_NAME;
+  if (!custom) return null;
   try {
     return new RegExp(custom, 'i');
   } catch (e) {
     // 잘못된 정규식으로 컨테이너가 재시작 루프에 빠지면 안 된다
-    console.error(`⚠️ IGNORE_FILE_PATTERN 이 올바른 정규식이 아닙니다. 기본값을 사용합니다: ${(e as Error).message}`);
-    return DEFAULT_IGNORE_NAME;
+    console.error(`⚠️ IGNORE_FILE_PATTERN 이 올바른 정규식이 아닙니다. 무시하고 전부 처리합니다: ${(e as Error).message}`);
+    return null;
   }
 }
 
@@ -91,9 +91,9 @@ export function startWatcher(
 
     const fileName = path.basename(filePath);
 
-    if (IGNORE_NAME.test(fileName)) {
+    if (IGNORE_NAME?.test(fileName)) {
       processed.add(filePath); // 매 스캔마다 같은 로그가 반복되지 않게 기억해 둔다
-      console.log(`⏭️  건너뜀 (통화 녹음으로 판단): ${fileName}`);
+      console.log(`⏭️  건너뜀 (IGNORE_FILE_PATTERN 일치): ${fileName}`);
       return;
     }
 
