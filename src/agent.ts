@@ -11,6 +11,7 @@ import { startDashboardServer } from './dashboard/server.js';
 import { appendHistoryRecord, readHistory, type DistributionStep } from './dashboard/history.js';
 import { saveMeetingToCalendar } from './distributor/gcal.js';
 import { captureConsole } from './utils/logbuffer.js';
+import { resolveRecordedAt, formatKST } from './utils/recording-date.js';
 
 // 대시보드가 진행 상황을 보여줄 수 있도록 콘솔 출력을 버퍼에 함께 담는다.
 // 첫 로그가 찍히기 전에 걸어야 시작 메시지부터 남는다.
@@ -51,19 +52,24 @@ startWatcher(WATCH_DIR, async (filePath: string) => {
   const startTime = Date.now();
   const steps: DistributionStep[] = [];
 
+  // 상대 날짜('다음 주 화요일')의 기준이 되는 시점. 파일명에 박힌 녹음 시각을 쓰고,
+  // 없으면 파일 수정 시각으로 떨어진다.
+  const recordedAt = resolveRecordedAt(filePath);
+
   try {
     console.log(`\n[1/4] 🎙️  음성 변환 중... (${fileName})`);
     const { text, durationSec } = await transcribe(filePath);
     console.log(`       ✅ 완료 (${durationSec.toFixed(1)}초 분량)`);
 
     console.log(`[2/4] 🤖 AI 분석 중... (DeepSeek)`);
+    console.log(`       📅 회의 시각 기준: ${formatKST(recordedAt)} ('다음 주' 같은 표현을 이 날짜로 계산)`);
     let customPrompt = undefined;
     const promptPath = path.join(WATCH_DIR, 'meetingbot_prompt.txt');
     if (fs.existsSync(promptPath)) {
       customPrompt = fs.readFileSync(promptPath, 'utf-8').trim();
       console.log(`       💡 외부 프롬프트(meetingbot_prompt.txt) 적용 완료`);
     }
-    const analysis = await analyzeMeeting(text, customPrompt);
+    const analysis = await analyzeMeeting(text, customPrompt, recordedAt);
     console.log(`       ✅ 완료`);
 
     console.log(`[3/6] 💬 Slack 전송 중...`);
@@ -76,7 +82,7 @@ startWatcher(WATCH_DIR, async (filePath: string) => {
     console.log(`       ✅ 완료 → ${notionUrl}`);
 
     console.log(`[5/6] 📊 구글 시트 누적 기록 중...`);
-    await track(steps, 'sheets', () => saveMeetingToGSheets(analysis, fileName));
+    await track(steps, 'sheets', () => saveMeetingToGSheets(analysis, fileName, recordedAt));
     console.log(`       ✅ 완료`);
 
     console.log(`[6/6] 🗓️ 구글 캘린더 연동 중...`);
