@@ -1,5 +1,6 @@
-import { Router, Request, Response } from 'express';
+import express, { Router, Request, Response } from 'express';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { readHistory, clearHistory } from './history.js';
 import { readLogs } from '../utils/logbuffer.js';
@@ -8,6 +9,9 @@ import { listDrafts, readDraft, saveDraft, deleteDraft } from './pending.js';
 import { publishMeeting } from '../distributor/publish.js';
 import { appendHistoryRecord } from './history.js';
 import { getWatcherStatus } from '../collector/watcher.js';
+import { extractDocumentText, isSupportedDocument, SUPPORTED_EXTENSIONS } from '../extract/document.js';
+import { deriveActionItems } from '../extract/actionitems.js';
+import { fetchSheet, appendRows, isSheetConfigured } from '../distributor/actionitem-sheet.js';
 
 export const dashboardRouter = Router();
 
@@ -277,5 +281,126 @@ dashboardRouter.post('/config', (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message });
+  }
+});
+
+// ── 액션아이템 ──────────────────────────────────────────────────
+// 주간보고를 올리면 관리할 작업을 도출해 보여주고, 사람이 검토한 것만 시트로 보낸다.
+// 도출과 전송을 따로 둔 이유는 검토 없이 시트가 오염되는 걸 막기 위해서다.
+
+/** 시트가 연결돼 있는지와 분류 값 목록. 검토 화면의 드롭다운이 이걸 쓴다. */
+dashboardRouter.get('/actionitems/sheet', async (_req: Request, res: Response) => {
+  if (!isSheetConfigured()) {
+    res.json({ success: true, data: { configured: false } });
+    return;
+  }
+  try {
+    const snap = await fetchSheet();
+    res.json({
+      success: true,
+      data: {
+        configured: true,
+        rowCount: snap.rows.length,
+        headers: snap.headers,
+        categories: snap.categories,
+        teams: snap.teams,
+        statuses: snap.statuses,
+      },
+    });
+  } catch (error) {
+    res.status(502).json({ success: false, error: (error as Error).message });
+  }
+});
+
+/**
+ * 문서를 받아 액션아이템을 도출한다. 시트에는 아직 쓰지 않는다.
+ *
+ * 본문은 파일 그대로(raw)이고 파일명은 쿼리로 받는다. JSON 에 base64 로 실으면
+ * 용량이 3분의 4로 부풀고, 그것 때문에 전역 본문 제한을 올리면 다른 라우트까지
+ * 큰 요청을 받게 된다. 여기서만 크게 열어둔다.
+ */
+dashboardRouter.post(
+  '/actionitems/derive',
+  express.raw({ type: () => true, limit: '25mb' }),
+  async (req: Request, res: Response) => {
+    const fileName = String(req.query.fileName ?? '').trim();
+    if (!fileName) {
+      res.status(400).json({ success: false, error: '파일명이 없습니다.' });
+      return;
+    }
+    if (!isSupportedDocument(fileName)) {
+      res.status(400).json({
+        success: false,
+        error: `지원하지 않는 형식입니다. ${SUPPORTED_EXTENSIONS.join(', ')} 만 됩니다.`,
+      });
+      return;
+    }
+    if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+      res.status(400).json({ success: false, error: '파일 내용이 비어 있습니다.' });
+      return;
+    }
+
+    // 추출기가 경로를 받으므로 잠깐 임시 파일로 떨군다. 확장자로 형식을 가르기 때문에
+    // 원본 확장자를 유지해야 한다.
+    const tmp = path.join(
+      os.tmpdir(),
+      `actionitem-${Date.now()}${path.extname(fileName).toLowerCase()}`,
+    );
+
+    try {
+      fs.writeFileSync(tmp, req.body);
+
+      console.log(`📄 [액션아이템] ${fileName} 분석 시작 — ${accessUser(req)}`);
+      const doc = await extractDocumentText(tmp);
+
+      const snapshot = isSheetConfigured() ? await fetchSheet() : null;
+      const result = await deriveActionItems(doc.text, snapshot);
+
+      res.json({
+        success: true,
+        data: {
+          fileName,
+          format: doc.format,
+          pages: doc.pages,
+          textLength: doc.text.length,
+          model: result.model,
+          skipped: result.skipped,
+          notes: result.notes,
+          items: result.items,
+          categories: snapshot?.categories ?? [],
+          teams: snapshot?.teams ?? [],
+          statuses: snapshot?.statuses ?? [],
+        },
+      });
+    } catch (error) {
+      console.error(`❌ [액션아이템] ${fileName} 실패: ${(error as Error).message}`);
+      res.status(500).json({ success: false, error: (error as Error).message });
+    } finally {
+      fs.rmSync(tmp, { force: true });
+    }
+  },
+);
+
+/** 사람이 검토를 마친 항목만 시트에 덧붙인다. */
+dashboardRouter.post('/actionitems/commit', async (req: Request, res: Response) => {
+  const items = req.body?.items;
+  if (!Array.isArray(items) || items.length === 0) {
+    res.status(400).json({ success: false, error: '보낼 항목이 없습니다.' });
+    return;
+  }
+  if (!isSheetConfigured()) {
+    res.status(400).json({ success: false, error: '시트가 연결돼 있지 않습니다 (ACTIONITEM_SHEET_URL).' });
+    return;
+  }
+
+  try {
+    // 화면이 보내오는 건 이미 시트 열 이름을 쓰는 객체다. 근거·신뢰도처럼 검토용으로만
+    // 쓰인 필드가 섞여 들어오면 시트가 모르는 열이라 무시되므로 따로 거르지 않는다.
+    const added = await appendRows(items);
+    console.log(`📊 [액션아이템] ${added}건 시트에 추가 — ${accessUser(req)}`);
+    res.json({ success: true, data: { added } });
+  } catch (error) {
+    console.error(`❌ [액션아이템] 시트 추가 실패: ${(error as Error).message}`);
+    res.status(502).json({ success: false, error: (error as Error).message });
   }
 });

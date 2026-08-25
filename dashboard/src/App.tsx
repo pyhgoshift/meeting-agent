@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react';
-import { Save, Settings, FileText, MessageSquare, Activity, Loader2, RefreshCw, Lock, Trash2, FileCheck, Zap, Hand } from 'lucide-react';
+import { Save, Settings, FileText, MessageSquare, Activity, Loader2, RefreshCw, Lock, Trash2, FileCheck, Zap, Hand, ClipboardList } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { API_BASE, fetchWithAuth } from './api';
 import StatusPanel from './components/StatusPanel';
 import MeetingsTable from './components/MeetingsTable';
 import LogPanel from './components/LogPanel';
 import PendingReview from './components/PendingReview';
+import ActionItems from './components/ActionItems';
 
 // 접근 통제는 Cloudflare Access가 엣지에서 처리한다(이메일 OTP). 여기까지 온 요청은
 // 이미 인증을 통과했고, 컨테이너 포트는 어디에도 공개돼 있지 않아 터널 외 경로가 없다.
 // 그래서 대시보드 자체 로그인은 두지 않는다.
 function App() {
-  const [activeTab, setActiveTab] = useState<'status' | 'pending' | 'prompt' | 'slack' | 'env'>('status');
+  const [activeTab, setActiveTab] = useState<'status' | 'pending' | 'actionitems' | 'prompt' | 'slack' | 'env'>('status');
   
   const [config, setConfig] = useState({ prompt: '', slackTemplate: '', env: '', envPath: '' });
   const [status, setStatus] = useState<any>(null);
@@ -214,6 +215,13 @@ function App() {
             </div>
 
             <div className="my-4 border-t border-white/10" />
+            <TabButton
+              active={activeTab === 'actionitems'}
+              onClick={() => setActiveTab('actionitems')}
+              icon={<ClipboardList className="w-5 h-5" />}
+              title="액션아이템"
+              subtitle="주간보고 → 구글 시트"
+            />
             <TabButton 
               active={activeTab === 'prompt'} 
               onClick={() => setActiveTab('prompt')}
@@ -248,6 +256,7 @@ function App() {
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
                   {activeTab === 'status' && '📊 모니터링 대시보드'}
                   {activeTab === 'pending' && '📝 검토 대기 (전송 전)'}
+                  {activeTab === 'actionitems' && '📋 액션아이템 도출'}
                   {activeTab === 'prompt' && '🧠 프롬프트 에디터'}
                   {activeTab === 'slack' && '🎨 슬랙 템플릿 에디터'}
                   {activeTab === 'env' && '⚙️ 환경설정 뷰어 (읽기 전용)'}
@@ -264,6 +273,8 @@ function App() {
                 <div className="flex-1 flex items-center justify-center"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>
               ) : activeTab === 'pending' ? (
                 <PendingReview />
+              ) : activeTab === 'actionitems' ? (
+                <ActionItems />
               ) : activeTab === 'status' ? (
                 <>
                   <StatusPanel status={status} />
