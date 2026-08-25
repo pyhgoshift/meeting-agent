@@ -1,8 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import JSZip from 'jszip';
-import mammoth from 'mammoth';
-import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+
+// 문서 라이브러리는 쓸 때만 불러온다. 최상단에 두면 봇이 기동할 때마다 전부 로딩되는데,
+// 회의 녹음만 처리하는 평소에는 하나도 필요 없다. 실제로 pdfjs 를 기동 경로에 올렸다가
+// 컨테이너가 SIGILL(exit 132)로 죽어 봇 전체가 멈춘 적이 있다 — 문서 한 종류가 이 CPU에서
+// 안 돌더라도 나머지 기능까지 같이 죽는 구조여선 안 된다.
 
 /**
  * 문서에서 텍스트를 뽑는다. 주간보고를 읽어 액션아이템을 도출하기 위한 앞단이다.
@@ -49,6 +51,7 @@ export async function extractDocumentText(filePath: string): Promise<ExtractedDo
  * 그냥 이어붙이면 표가 한 줄로 뭉개져서 무슨 값이 어느 칸인지 알 수 없게 된다.
  */
 async function extractPdf(buf: Buffer): Promise<ExtractedDocument> {
+  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const doc = await getDocument({ data: new Uint8Array(buf), useSystemFonts: true }).promise;
   const pages: string[] = [];
 
@@ -79,12 +82,14 @@ async function extractPdf(buf: Buffer): Promise<ExtractedDocument> {
 
 /** DOCX. mammoth 가 표를 줄바꿈으로 펼쳐준다. */
 async function extractDocx(buf: Buffer): Promise<ExtractedDocument> {
+  const { default: mammoth } = await import('mammoth');
   const { value } = await mammoth.extractRawText({ buffer: buf });
   return { text: value.trim(), format: 'Word' };
 }
 
 /** PPTX 는 슬라이드마다 XML 이 하나씩 든 zip 이다. <a:t> 안에 글자가 들어있다. */
 async function extractPptx(buf: Buffer): Promise<ExtractedDocument> {
+  const { default: JSZip } = await import('jszip');
   const zip = await JSZip.loadAsync(buf);
 
   const slideNames = Object.keys(zip.files)
@@ -103,6 +108,7 @@ async function extractPptx(buf: Buffer): Promise<ExtractedDocument> {
 
 /** HWPX 는 HWP 의 XML 판이라 zip 을 풀어 읽으면 된다 (바이너리 .hwp 와 다르다). */
 async function extractHwpx(buf: Buffer): Promise<ExtractedDocument> {
+  const { default: JSZip } = await import('jszip');
   const zip = await JSZip.loadAsync(buf);
 
   const sectionNames = Object.keys(zip.files)
