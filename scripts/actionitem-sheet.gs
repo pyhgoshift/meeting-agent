@@ -118,6 +118,11 @@ function readSheet_() {
 /** 날짜 셀은 YYYY-MM-DD 문자열로 내보낸다 (JSON 으로 오갈 때 시간대에 흔들리지 않게). */
 function formatCell_(v) {
   if (v instanceof Date) {
+    // 시트는 '시각만 있는 값'(9:30 같은 것)을 1899-12-30 을 기준으로 저장한다.
+    // 연도로 구분하지 않으면 시작시간이 전부 "1899-12-30" 이 되어 시각이 사라진다.
+    if (v.getFullYear() < 1900) {
+      return Utilities.formatDate(v, 'Asia/Seoul', 'HH:mm');
+    }
     return Utilities.formatDate(v, 'Asia/Seoul', 'yyyy-MM-dd');
   }
   return v === null || v === undefined ? '' : String(v).trim();
