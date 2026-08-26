@@ -1,4 +1,5 @@
 import { callWithFallback, LLMResponse, Provider } from './fallback.js';
+import type { ChatOptions } from './providers/deepseek.js';
 
 export type Mode = 'fast' | 'smart' | 'hybrid' | 'auto';
 
@@ -53,8 +54,9 @@ export async function routedCall(
   system: string,
   user: string,
   transcript = '',
+  options: ChatOptions = {},
 ): Promise<LLMResponse> {
   const resolved = resolveMode(mode, transcript);
   const [primary, ...fallbacks] = MATRIX[resolved][task];
-  return callWithFallback(primary, fallbacks, system, user);
+  return callWithFallback(primary, fallbacks, system, user, options);
 }

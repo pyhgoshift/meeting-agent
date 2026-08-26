@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
+import { z as zodToJson } from 'zod';
 import { z } from 'zod';
 import { routedCall } from '../llm/router.js';
 import type { SheetSnapshot } from '../distributor/actionitem-sheet.js';
@@ -258,7 +259,13 @@ async function deriveWithFallback(
 
 {"items":[{"task":"","status":"계획","startDate":"","endDate":"","category":"","team":"","startTime":"","durationHours":"","location":"","owner":"","phone":"","headcount":"","evidence":"","confidence":"high"}],"rejected":[{"text":"","reason":""}],"notes":""}`;
 
-  const res = await routedCall('fast', 'action_items', instruction, documentText);
+  // NIM 은 생성 단계에서 형식을 붙들 수 있다. 프롬프트로 부탁하는 것과 달리
+  // 스키마에서 벗어난 답이 아예 안 나온다 — 숫자/문자 어긋남이 여기서 끝난다.
+  // 항목이 스무 개씩 나오는 작업이라 길이 상한도 기본값(4096)으로는 모자라 잘린다.
+  const res = await routedCall('fast', 'action_items', instruction, documentText, '', {
+    maxTokens: 16000,
+    jsonSchema: zodToJson.toJSONSchema(ResultSchema, { target: 'draft-7' }) as Record<string, unknown>,
+  });
 
   return { ...parseLoosely(res.content), model: res.model };
 }

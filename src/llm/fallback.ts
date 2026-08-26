@@ -1,4 +1,4 @@
-import { chatDeepSeek } from './providers/deepseek.js';
+import { chatDeepSeek, NVIDIA_MODEL, ChatOptions } from './providers/deepseek.js';
 import { chatClaude } from './providers/claude.js';
 import { chatGroq } from './providers/groq-llm.js';
 
@@ -12,11 +12,18 @@ export interface LLMResponse {
 
 export type Provider = 'deepseek' | 'claude-haiku' | 'claude-sonnet' | 'groq';
 
-async function callProvider(provider: Provider, system: string, user: string): Promise<LLMResponse> {
+async function callProvider(
+  provider: Provider,
+  system: string,
+  user: string,
+  options: ChatOptions = {},
+): Promise<LLMResponse> {
   switch (provider) {
     case 'deepseek': {
-      const raw = await chatDeepSeek(system, user);
-      return { content: raw, model: 'deepseek-ai/deepseek-v3-0324', inputTokens: 0, outputTokens: 0, provider };
+      const raw = await chatDeepSeek(system, user, options);
+      // 실제로 부른 모델을 그대로 알린다. 예전엔 'deepseek-v3-0324' 가 박혀 있어서
+      // 화면에는 v3 가 떴는데 실제로는 v4-pro 가 돌고 있었다.
+      return { content: raw, model: NVIDIA_MODEL, inputTokens: 0, outputTokens: 0, provider };
     }
     case 'claude-haiku': {
       const r = await chatClaude(system, user, 'claude-haiku-4-5-20251001');
@@ -38,13 +45,14 @@ export async function callWithFallback(
   fallbacks: Provider[],
   system: string,
   user: string,
+  options: ChatOptions = {},
 ): Promise<LLMResponse> {
   const chain = [primary, ...fallbacks];
   const failures: string[] = [];
 
   for (const provider of chain) {
     try {
-      return await callProvider(provider, system, user);
+      return await callProvider(provider, system, user, options);
     } catch (err) {
       failures.push(`${provider}: ${(err as Error).message}`);
       console.warn(`[fallback] ${provider} 실패 → 다음 시도: ${err}`);
