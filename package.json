@@ -36,7 +36,6 @@
     "mammoth": "^1.12.1",
     "openai": "^6.34.0",
     "p-queue": "^9.2.0",
-    "pdfjs-dist": "^6.2.108",
     "zod": "^4.3.6"
   },
   "devDependencies": {

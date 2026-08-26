@@ -28,9 +28,11 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-# 타임존 설정 (한국) 및 ffmpeg 설치
+# 타임존 설정 (한국), ffmpeg, PDF 텍스트 추출기
+# poppler-utils 의 pdftotext 로 PDF 를 읽는다. pdfjs 는 이 NAS 의 CPU 에 없는 명령어를
+# 써서 프로세스가 SIGILL 로 즉사한다(exit 132) — 코드로는 우회할 수 없는 문제라 도구를 바꿨다.
 ENV TZ=Asia/Seoul
-RUN apk add --no-cache tzdata ffmpeg && \
+RUN apk add --no-cache tzdata ffmpeg poppler-utils && \
     cp /usr/share/zoneinfo/Asia/Seoul /etc/localtime && \
     echo "Asia/Seoul" > /etc/timezone
 

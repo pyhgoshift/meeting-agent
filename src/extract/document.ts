@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { spawn } from 'child_process';
 
 // 문서 라이브러리는 쓸 때만 불러온다. 최상단에 두면 봇이 기동할 때마다 전부 로딩되는데,
 // 회의 녹음만 처리하는 평소에는 하나도 필요 없다. 실제로 pdfjs 를 기동 경로에 올렸다가
@@ -32,7 +33,7 @@ export async function extractDocumentText(filePath: string): Promise<ExtractedDo
   const buf = fs.readFileSync(filePath);
 
   switch (ext) {
-    case '.pdf':  return extractPdf(buf);
+    case '.pdf':  return extractPdf(filePath);
     case '.docx': return extractDocx(buf);
     case '.pptx': return extractPptx(buf);
     case '.hwpx': return extractHwpx(buf);
@@ -47,37 +48,43 @@ export async function extractDocumentText(filePath: string): Promise<ExtractedDo
 }
 
 /**
- * PDF. 조각난 텍스트를 y좌표로 묶어 줄을 복원한다.
- * 그냥 이어붙이면 표가 한 줄로 뭉개져서 무슨 값이 어느 칸인지 알 수 없게 된다.
+ * PDF. poppler 의 pdftotext 에 맡긴다.
+ *
+ * 원래는 pdfjs 로 글자 조각의 y좌표를 묶어 줄을 복원했는데, 그 라이브러리가 이 NAS 의
+ * CPU 에 없는 명령어를 써서 불러오는 순간 프로세스가 죽는다(SIGILL, exit 132).
+ * pdftotext 는 -layout 을 주면 칸 간격까지 살려서 뽑아주므로 표가 있는 보고서에는
+ * 오히려 이쪽이 낫다. 페이지는 폼피드 문자로 갈라져 온다.
  */
-async function extractPdf(buf: Buffer): Promise<ExtractedDocument> {
-  const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
-  const doc = await getDocument({ data: new Uint8Array(buf), useSystemFonts: true }).promise;
-  const pages: string[] = [];
+async function extractPdf(filePath: string): Promise<ExtractedDocument> {
+  const out = await new Promise<string>((resolve, reject) => {
+    const proc = spawn('pdftotext', ['-layout', '-enc', 'UTF-8', filePath, '-']);
+    let stdout = '';
+    let stderr = '';
 
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
-    const content = await page.getTextContent();
+    proc.stdout.setEncoding('utf-8');
+    proc.stdout.on('data', d => { stdout += d; });
+    proc.stderr.on('data', d => { stderr += d; });
 
-    const lines = new Map<number, { x: number; s: string }[]>();
-    for (const item of content.items) {
-      if (!('str' in item) || !item.str) continue;
-      const y = Math.round((item as any).transform[5]);
-      if (!lines.has(y)) lines.set(y, []);
-      lines.get(y)!.push({ x: (item as any).transform[4], s: item.str });
-    }
+    proc.on('error', err => reject(
+      (err as NodeJS.ErrnoException).code === 'ENOENT'
+        ? new Error('pdftotext 가 설치돼 있지 않습니다 (Dockerfile 의 poppler-utils 확인).')
+        : err));
 
-    const text = [...lines.entries()]
-      .sort((a, b) => b[0] - a[0])                                   // 위 → 아래
-      .map(([, parts]) =>
-        parts.sort((a, b) => a.x - b.x).map(p => p.s).join(' ').replace(/\s+/g, ' ').trim())
-      .filter(Boolean)
-      .join('\n');
+    proc.on('close', code => code === 0
+      ? resolve(stdout)
+      : reject(new Error(`pdftotext 실패 (종료코드 ${code}): ${stderr.trim() || '사유 없음'}`)));
+  });
 
-    pages.push(`--- ${i}쪽 ---\n${text}`);
+  const pages = out.split('\f').map(p => p.replace(/[ \t]+$/gm, '').trim()).filter(Boolean);
+  if (pages.length === 0) {
+    throw new Error('PDF 에서 글자를 찾지 못했습니다. 스캔한 이미지 PDF 라면 텍스트가 없습니다.');
   }
 
-  return { text: pages.join('\n\n'), pages: doc.numPages, format: 'PDF' };
+  return {
+    text: pages.map((t, i) => `--- ${i + 1}쪽 ---\n${t}`).join('\n\n'),
+    pages: pages.length,
+    format: 'PDF',
+  };
 }
 
 /** DOCX. mammoth 가 표를 줄바꿈으로 펼쳐준다. */
