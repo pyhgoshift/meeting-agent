@@ -80,6 +80,7 @@ export default function ActionItems() {
   const [result, setResult] = useState<Derivation | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [picked, setPicked] = useState<boolean[]>([]);
+  const [elapsed, setElapsed] = useState(0);
   const [openEvidence, setOpenEvidence] = useState<number | null>(null);
   const [showRejected, setShowRejected] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -109,15 +110,18 @@ export default function ActionItems() {
       return;
     }
 
-    // 2단계 — 도출
-    setBusy('derive');
+    // 2단계 — 도출. 접수만 받고 결과는 따로 찾아온다.
+    // Cloudflare 가 100초에서 연결을 끊어서(524) 한 번의 요청으로는 끝낼 수 없다.
+    setBusy('derive'); setElapsed(0);
     try {
-      const res = await fetchWithAuth(`${API_BASE}/api/actionitems/derive`, {
+      const accepted = await fetchWithAuth(`${API_BASE}/api/actionitems/derive`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: doc.text }),
       });
-      const data: Derivation = (await res.json()).data;
+      const { jobId } = (await accepted.json()).data;
+
+      const data = await waitForJob(jobId);
       setResult(data);
       setRows(data.items.map(toRow));
       setPicked(data.items.map(() => true));
@@ -126,6 +130,19 @@ export default function ActionItems() {
     } finally {
       setBusy('');
       if (fileInput.current) fileInput.current.value = '';
+    }
+  }
+
+  /** 끝날 때까지 몇 초마다 물어본다. 요청 하나하나는 즉시 끝나므로 타임아웃에 안 걸린다. */
+  async function waitForJob(jobId: string): Promise<Derivation> {
+    for (;;) {
+      await new Promise(r => setTimeout(r, 2500));
+
+      const res = await fetchWithAuth(`${API_BASE}/api/actionitems/derive/${jobId}`);
+      const { data } = await res.json();
+
+      if (data.state === 'running') { setElapsed(data.elapsedSec); continue; }
+      return data as Derivation;
     }
   }
 
@@ -168,7 +185,9 @@ export default function ActionItems() {
       state: result ? 'done' : busy === 'derive' ? 'active' : 'wait',
       detail: result
         ? `확정 ${result.items.length}건${result.rejected.length ? ` · 관련 없음 ${result.rejected.length}건` : ''}${result.skipped ? ` · 중복 ${result.skipped}건` : ''}`
-        : busy === 'derive' ? '1~2분 걸립니다' : undefined,
+        : busy === 'derive'
+          ? elapsed ? `${elapsed}초 경과 — 보통 1~2분` : '1~2분 걸립니다'
+          : undefined,
     },
     { label: '검토 후 시트 전송', state: result ? 'active' : 'wait' },
   ];

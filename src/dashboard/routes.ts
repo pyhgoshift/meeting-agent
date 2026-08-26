@@ -9,6 +9,7 @@ import { listDrafts, readDraft, saveDraft, deleteDraft } from './pending.js';
 import { publishMeeting } from '../distributor/publish.js';
 import { appendHistoryRecord } from './history.js';
 import { getWatcherStatus } from '../collector/watcher.js';
+import { startJob, readJob, dropJob } from './jobs.js';
 import { extractDocumentText, isSupportedDocument, SUPPORTED_EXTENSIONS } from '../extract/document.js';
 import { deriveActionItems } from '../extract/actionitems.js';
 import { fetchSheet, appendRows, isSheetConfigured } from '../distributor/actionitem-sheet.js';
@@ -376,42 +377,72 @@ dashboardRouter.post(
   },
 );
 
-/** 2단계 — 뽑아낸 글자에서 액션아이템을 도출한다. 시트에는 아직 쓰지 않는다. */
+/**
+ * 2단계 — 뽑아낸 글자에서 액션아이템을 도출한다. 시트에는 아직 쓰지 않는다.
+ *
+ * 접수만 하고 바로 돌려준다. 도출은 1~2분이 걸리는데 Cloudflare 가 100초에서
+ * 연결을 끊어(524) 봇이 멀쩡히 일하는 중에 화면만 죽는다. 결과는 아래 조회로 받아간다.
+ */
 dashboardRouter.post(
   '/actionitems/derive',
   express.json({ limit: '8mb' }),   // 문서 전문이 그대로 돌아온다 — 기본 256kb 로는 모자란다
-  async (req: Request, res: Response) => {
+  (req: Request, res: Response) => {
     const text = String(req.body?.text ?? '');
     if (!text.trim()) {
       res.status(400).json({ success: false, error: '분석할 내용이 없습니다.' });
       return;
     }
 
-    try {
+    const who = accessUser(req);
+    const jobId = startJob(async () => {
       const snapshot = isSheetConfigured() ? await fetchSheet() : null;
       const result = await deriveActionItems(text, snapshot);
+      console.log(`🧠 [액션아이템] ${result.model} → 확정 ${result.items.length}건, 제외 ${result.rejected.length}건 — ${who}`);
 
-      res.json({
-        success: true,
-        data: {
-          model: result.model,
-          skipped: result.skipped,
-          notes: result.notes,
-          items: result.items,
-          rejected: result.rejected,
-          categories: snapshot?.categories ?? [],
-          teams: snapshot?.teams ?? [],
-          statuses: snapshot?.statuses ?? [],
-          sheetName: snapshot?.sheetName,
-          sheetUrl: snapshot?.sheetUrl,
-        },
-      });
-    } catch (error) {
-      console.error(`❌ [액션아이템] 도출 실패: ${(error as Error).message}`);
-      res.status(500).json({ success: false, error: (error as Error).message });
-    }
+      return {
+        model: result.model,
+        skipped: result.skipped,
+        notes: result.notes,
+        items: result.items,
+        rejected: result.rejected,
+        categories: snapshot?.categories ?? [],
+        teams: snapshot?.teams ?? [],
+        statuses: snapshot?.statuses ?? [],
+        sheetName: snapshot?.sheetName,
+        sheetUrl: snapshot?.sheetUrl,
+      };
+    });
+
+    console.log(`🧠 [액션아이템] ${text.length}자 분석 시작 — ${who}`);
+    res.status(202).json({ success: true, data: { jobId } });
   },
 );
+
+/** 도출 결과를 찾아간다. 화면이 몇 초마다 물어본다 — 매번 즉시 응답한다. */
+dashboardRouter.get('/actionitems/derive/:jobId', (req: Request, res: Response) => {
+  const id = String(req.params.jobId);
+  const job = readJob<Record<string, unknown>>(id);
+
+  if (!job) {
+    res.status(404).json({ success: false, error: '끝난 지 오래됐거나 없는 작업입니다. 다시 올려주세요.' });
+    return;
+  }
+
+  if (job.state === 'running') {
+    res.json({ success: true, data: { state: 'running', elapsedSec: job.elapsedSec } });
+    return;
+  }
+
+  dropJob(id);   // 받아갔으면 들고 있을 이유가 없다
+
+  if (job.state === 'error') {
+    console.error(`❌ [액션아이템] 도출 실패: ${job.error}`);
+    res.status(500).json({ success: false, error: job.error });
+    return;
+  }
+
+  res.json({ success: true, data: { state: 'done', elapsedSec: job.elapsedSec, ...job.data } });
+});
 
 /** 사람이 검토를 마친 항목만 시트에 덧붙인다. */
 dashboardRouter.post('/actionitems/commit', async (req: Request, res: Response) => {
