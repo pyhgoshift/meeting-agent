@@ -119,7 +119,7 @@ function readSheet_() {
   return { sheet: sheet, headers: headers, rows: rows, title: ss.getName(), url: ss.getUrl() };
 }
 
-/** 날짜 셀은 YYYY-MM-DD 문자열로 내보낸다 (JSON 으로 오갈 때 시간대에 흔들리지 않게). */
+/** 날짜 셀은 시트가 쓰는 YYYY.MM.DD 문자열로 내보낸다 (JSON 으로 오갈 때 시간대에 흔들리지 않게). */
 function formatCell_(v) {
   if (v instanceof Date) {
     // 시트는 '시각만 있는 값'(9:30 같은 것)을 1899-12-30 을 기준으로 저장한다.
@@ -127,14 +127,18 @@ function formatCell_(v) {
     if (v.getFullYear() < 1900) {
       return Utilities.formatDate(v, 'Asia/Seoul', 'HH:mm');
     }
-    return Utilities.formatDate(v, 'Asia/Seoul', 'yyyy-MM-dd');
+    return Utilities.formatDate(v, 'Asia/Seoul', 'yyyy.MM.dd');
   }
   return v === null || v === undefined ? '' : String(v).trim();
 }
 
-/** 'YYYY-MM-DD' 를 시트가 날짜로 인식하는 Date 로 바꾼다. 형식이 다르면 원본을 그대로 둔다. */
+/**
+ * 날짜 문자열을 시트가 날짜로 인식하는 Date 로 바꾼다. 형식이 다르면 원본을 그대로 둔다.
+ * 점·하이픈·슬래시를 다 받는다 — 시트는 YYYY.MM.DD 를 쓰지만 사람이 손으로 고칠 때
+ * 하이픈을 치는 일이 흔하고, 그것 때문에 글자로 들어가면 정렬과 색칠이 어긋난다.
+ */
 function toDate_(v) {
-  const m = String(v).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const m = String(v).trim().match(/^(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})\.?$/);
   if (!m) return v;
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }

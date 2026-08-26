@@ -30,6 +30,10 @@ const SUGGEST_SOURCE: Record<string, 'statuses' | 'categories' | 'teams'> = {
 
 const DATE_FIELDS = new Set(['시작일', '종료일']);
 
+// 시트가 쓰는 형식. 브라우저 기본 날짜 선택기는 지역마다 다른 모양으로 보여줘서
+// 화면과 시트가 어긋나 보인다 — 글자 그대로 쓰고 형식만 안내한다.
+const DATE_PLACEHOLDER = '2026.09.11';
+
 interface DerivedItem {
   task: string; status: string; startDate: string; endDate: string;
   category: string; team: string; startTime: string; durationHours: string;
@@ -366,7 +370,8 @@ export default function ActionItems() {
                           <input
                             value={row[col]}
                             list={listId}
-                            type={DATE_FIELDS.has(col) ? 'date' : 'text'}
+                            placeholder={DATE_FIELDS.has(col) ? DATE_PLACEHOLDER : undefined}
+                            inputMode={DATE_FIELDS.has(col) ? 'numeric' : undefined}
                             onChange={e => edit(i, col, e.target.value)}
                             className="w-full rounded-md bg-black/25 px-2 py-1.5 text-xs text-slate-200 outline-none ring-1 ring-transparent transition-all focus:bg-black/40 focus:ring-blue-500/40"
                           />

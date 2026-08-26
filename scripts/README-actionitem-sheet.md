@@ -66,7 +66,8 @@ ACTIONITEM_SHEET_TOKEN=2번에서_정한_문자열
 브라우저에서 웹 앱 URL 을 그냥 열어보세요. 이런 게 나오면 성공입니다:
 
 ```json
-{"ok":true,"headers":["상태","시작일","종료일",...],"rows":[...],
+{"ok":true,"sheetName":"ActionItem_run","sheetUrl":"https://docs.google.com/...",
+ "headers":["상태","시작일","종료일",...],"rows":[...],
  "categories":["배포","시스템점검"],"teams":["AI개발팀","인프라팀"]}
 ```
 

@@ -36,8 +36,8 @@ const COLUMN_MAP = {
 const ItemSchema = z.object({
   task: z.string().describe('할 일 한 줄. 명사형으로 끝낸다. 예) DNS 전환 영향도 분석'),
   status: z.string().describe('계획 또는 완료. 아직 안 끝난 일은 계획'),
-  startDate: z.string().describe('YYYY-MM-DD. 모르면 빈 문자열'),
-  endDate: z.string().describe('YYYY-MM-DD. 하루짜리면 시작일과 같게. 모르면 빈 문자열'),
+  startDate: z.string().describe('YYYY.MM.DD 형식. 예) 2026.09.11. 모르면 빈 문자열'),
+  endDate: z.string().describe('YYYY.MM.DD 형식. 하루짜리면 시작일과 같게. 모르면 빈 문자열'),
   category: z.string().describe('구분. 주어진 목록에서 고르되, 어느 것에도 안 맞으면 새로 짓는다'),
   team: z.string().describe('팀구분. 위와 같다'),
   startTime: z.string().describe('HH:mm. 문서에 없으면 빈 문자열 — 지어내지 않는다'),
@@ -62,6 +62,21 @@ const ResultSchema = z.object({
 });
 
 /**
+ * 시트가 쓰는 날짜 형식. 2026-09-11, 2026/9/11, 26.9.11 무엇이 와도 여기로 모은다.
+ * 모델은 구분자를 제멋대로 쓰고, 사람이 손으로 고칠 때도 마찬가지다.
+ */
+export function toSheetDate(v: string): string {
+  const t = v.trim();
+  if (!t) return '';
+
+  const m = t.match(/^(\d{2}|\d{4})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})\s*일?\.?$/);
+  if (!m) return t;   // 못 알아보면 사람이 고치도록 그대로 둔다
+
+  const year = m[1].length === 2 ? 2000 + Number(m[1]) : Number(m[1]);
+  return `${year}.${String(Number(m[2])).padStart(2, '0')}.${String(Number(m[3])).padStart(2, '0')}`;
+}
+
+/**
  * 실제로 돌아온 응답을 해석할 때 쓰는 스키마.
  *
  * 요청용과 나눠 둔 이유: 모델은 소요시간을 "4" 대신 4로, 인원을 "3" 대신 3으로
@@ -74,11 +89,13 @@ const text = () =>
     .optional()
     .transform(v => (v === null || v === undefined ? '' : String(v).trim()));
 
+const dateText = () => text().transform(toSheetDate);
+
 const LenientItem = z.object({
   task: text(),
   status: text(),
-  startDate: text(),
-  endDate: text(),
+  startDate: dateText(),
+  endDate: dateText(),
   category: text(),
   team: text(),
   startTime: text(),
@@ -145,7 +162,7 @@ export function buildSystemPrompt(snap: SheetSnapshot | null, referenceDate: str
 ## 날짜
 
 기준일은 ${referenceDate}입니다. "다음 주", "이달 말", "3분기" 같은 표현은
-이 날짜를 기준으로 실제 날짜(YYYY-MM-DD)로 바꾸십시오.
+이 날짜를 기준으로 실제 날짜로 바꾸되 **YYYY.MM.DD** 형식으로 쓰십시오 (예: 2026.09.11).
 범위가 애매하면 그 주의 금요일처럼 합리적인 날을 잡되, confidence를 low로 두십시오.
 전혀 짐작할 수 없으면 빈 문자열로 두십시오. **아무 날짜나 넣지 마십시오.**
 
@@ -235,7 +252,13 @@ async function deriveWithClaude(
   }
   // parsed_output 은 엄격한 스키마로 검사돼서, 숫자 한 칸 때문에 null 이 될 수 있다.
   // 그럴 땐 원문을 관대한 스키마로 다시 읽는다.
-  if (response.parsed_output) return { ...response.parsed_output, model };
+  //
+  // 성공했더라도 한 번 더 통과시킨다 — 날짜 형식을 시트에 맞추는 일이 거기 들어있어서,
+  // 건너뛰면 Claude 로 뽑은 것만 다른 형식으로 시트에 들어간다.
+  if (response.parsed_output) {
+    const normalized = LenientResult.safeParse(response.parsed_output);
+    if (normalized.success) return { ...normalized.data, model };
+  }
 
   const raw = response.content
     .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -257,7 +280,7 @@ async function deriveWithFallback(
 
 아래 형태의 JSON만 출력하십시오. 설명이나 코드블록 표시 없이 JSON 자체만.
 
-{"items":[{"task":"","status":"계획","startDate":"","endDate":"","category":"","team":"","startTime":"","durationHours":"","location":"","owner":"","phone":"","headcount":"","evidence":"","confidence":"high"}],"rejected":[{"text":"","reason":""}],"notes":""}`;
+{"items":[{"task":"","status":"계획","startDate":"2026.09.11","endDate":"2026.09.11","category":"","team":"","startTime":"","durationHours":"","location":"","owner":"","phone":"","headcount":"","evidence":"","confidence":"high"}],"rejected":[{"text":"","reason":""}],"notes":""}`;
 
   // NIM 은 생성 단계에서 형식을 붙들 수 있다. 프롬프트로 부탁하는 것과 달리
   // 스키마에서 벗어난 답이 아예 안 나온다 — 숫자/문자 어긋남이 여기서 끝난다.
