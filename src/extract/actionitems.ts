@@ -30,6 +30,8 @@ const COLUMN_MAP = {
   headcount: '작업인원(명)',
 } as const;
 
+// 모델에게 "이렇게 달라"고 요청할 때 쓰는 스키마. 구조화 출력에 그대로 넘어간다.
+// (여기에는 transform 을 못 쓴다 — JSON 스키마로 변환되지 않는다.)
 const ItemSchema = z.object({
   task: z.string().describe('할 일 한 줄. 명사형으로 끝낸다. 예) DNS 전환 영향도 분석'),
   status: z.string().describe('계획 또는 완료. 아직 안 끝난 일은 계획'),
@@ -38,11 +40,11 @@ const ItemSchema = z.object({
   category: z.string().describe('구분. 주어진 목록에서 고르되, 어느 것에도 안 맞으면 새로 짓는다'),
   team: z.string().describe('팀구분. 위와 같다'),
   startTime: z.string().describe('HH:mm. 문서에 없으면 빈 문자열 — 지어내지 않는다'),
-  durationHours: z.string().describe('소요 시간(시간 단위 숫자). 모르면 빈 문자열'),
+  durationHours: z.string().describe('소요 시간을 시간 단위 숫자로, 따옴표 안에. 예) "4". 모르면 빈 문자열'),
   location: z.string().describe('장소. 문서에 없으면 빈 문자열'),
   owner: z.string().describe('대표자 이름. 문서에 없으면 빈 문자열'),
   phone: z.string().describe('전화번호. 문서에 적혀 있을 때만'),
-  headcount: z.string().describe('작업인원 수. 문서에 적혀 있을 때만'),
+  headcount: z.string().describe('작업인원 수를 따옴표 안에. 예) "3". 문서에 적혀 있을 때만'),
   evidence: z.string().describe('이 항목의 근거가 된 문서의 원문 한 대목. 사람이 확인할 수 있게'),
   confidence: z.enum(['high', 'medium', 'low']).describe('문서에 명시적이면 high, 추론했으면 low'),
 });
@@ -56,6 +58,46 @@ const ResultSchema = z.object({
   items: z.array(ItemSchema),
   rejected: z.array(RejectedSchema).describe('항목이 될 만해 보였지만 제외한 것들. 사람이 판단을 되짚어볼 수 있게'),
   notes: z.string().describe('도출하면서 판단이 갈렸던 점이나 사람이 확인해야 할 것'),
+});
+
+/**
+ * 실제로 돌아온 응답을 해석할 때 쓰는 스키마.
+ *
+ * 요청용과 나눠 둔 이유: 모델은 소요시간을 "4" 대신 4로, 인원을 "3" 대신 3으로
+ * 곧잘 내놓는다. 뜻은 조금도 다르지 않은데 타입이 다르다는 이유로 전체 도출이
+ * 통째로 버려졌다. 20건을 제대로 뽑아놓고 숫자 한 칸 때문에 다 날리는 건
+ * 손해가 너무 크다 — 받아서 맞춰준다.
+ */
+const text = () =>
+  z.union([z.string(), z.number(), z.boolean(), z.null()])
+    .optional()
+    .transform(v => (v === null || v === undefined ? '' : String(v).trim()));
+
+const LenientItem = z.object({
+  task: text(),
+  status: text(),
+  startDate: text(),
+  endDate: text(),
+  category: text(),
+  team: text(),
+  startTime: text(),
+  durationHours: text(),
+  location: text(),
+  owner: text(),
+  phone: text(),
+  headcount: text(),
+  evidence: text(),
+  // 모델이 '높음' 이나 'HIGH' 로 답해도 화면이 죽지 않게 한다
+  confidence: z.unknown().transform(v => {
+    const s = String(v ?? '').toLowerCase();
+    return s === 'high' || s === 'medium' || s === 'low' ? (s as 'high' | 'medium' | 'low') : 'medium';
+  }),
+});
+
+const LenientResult = z.object({
+  items: z.array(LenientItem).optional().default([]),
+  rejected: z.array(z.object({ text: text(), reason: text() })).optional().default([]),
+  notes: text(),
 });
 
 export type DerivedItem = z.infer<typeof ItemSchema>;
@@ -190,11 +232,17 @@ async function deriveWithClaude(
   if (response.stop_reason === 'max_tokens') {
     throw new Error('항목이 너무 많아 응답이 잘렸습니다. 문서를 나눠서 올려주세요.');
   }
-  if (!response.parsed_output) {
-    throw new Error('응답을 구조화하지 못했습니다.');
-  }
+  // parsed_output 은 엄격한 스키마로 검사돼서, 숫자 한 칸 때문에 null 이 될 수 있다.
+  // 그럴 땐 원문을 관대한 스키마로 다시 읽는다.
+  if (response.parsed_output) return { ...response.parsed_output, model };
 
-  return { ...response.parsed_output, model };
+  const raw = response.content
+    .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+    .map(b => b.text)
+    .join('');
+  if (!raw.trim()) throw new Error('모델이 빈 응답을 돌려줬습니다.');
+
+  return { ...parseLoosely(raw), model };
 }
 
 /** ANTHROPIC_API_KEY 가 없을 때의 대비책. 정확도가 낮으므로 화면에 모델명을 띄운다. */
@@ -212,12 +260,38 @@ async function deriveWithFallback(
 
   const res = await routedCall('fast', 'action_items', instruction, documentText);
 
-  // 모델이 코드블록으로 감싸는 경우가 잦다.
-  const cleaned = res.content.replace(/^\s*```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim();
-  const parsed = ResultSchema.safeParse(JSON.parse(cleaned));
-  if (!parsed.success) throw new Error(`응답 형식이 스키마와 다릅니다: ${parsed.error.message}`);
+  return { ...parseLoosely(res.content), model: res.model };
+}
 
-  return { ...parsed.data, model: res.model };
+/** 모델이 돌려준 글에서 결과를 읽어낸다. 코드블록으로 감싸거나 앞뒤에 말을 붙여도 견딘다. */
+export function parseLoosely(raw: string): { items: DerivedItem[]; rejected: RejectedNote[]; notes: string } {
+  let body = raw.trim()
+    .replace(/^\s*```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/, '')
+    .trim();
+
+  // 설명을 앞뒤에 붙이는 모델이 있다. 바깥쪽 중괄호만 도려낸다.
+  if (!body.startsWith('{')) {
+    const from = body.indexOf('{');
+    const to = body.lastIndexOf('}');
+    if (from >= 0 && to > from) body = body.slice(from, to + 1);
+  }
+
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    throw new Error('모델 응답이 JSON 이 아닙니다. 문서를 다시 올려보세요.');
+  }
+
+  const parsed = LenientResult.safeParse(json);
+  if (!parsed.success) {
+    throw new Error(`응답에서 항목을 읽지 못했습니다: ${parsed.error.issues[0]?.message ?? '형식 불명'}`);
+  }
+  if (parsed.data.items.length === 0) {
+    throw new Error('문서에서 관리할 작업을 찾지 못했습니다. 일정이나 할 일이 적힌 문서인지 확인해주세요.');
+  }
+  return parsed.data;
 }
 
 export async function deriveActionItems(
