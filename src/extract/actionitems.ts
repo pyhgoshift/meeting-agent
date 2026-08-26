@@ -5,11 +5,12 @@ import { routedCall } from '../llm/router.js';
 import type { SheetSnapshot } from '../distributor/actionitem-sheet.js';
 
 /**
- * 주간보고에서 관리 가능한 작업 항목을 도출한다.
+ * 업무 문서에서 관리 가능한 작업 항목을 도출한다.
  *
- * 표에서 값을 옮기는 게 아니다. 보고서 전체를 읽고, 흩어져 있는 서술에서
- * "누가 언제까지 무엇을 한다"를 끌어내 시트 양식으로 정리한다. 문장 안에
- * 묻혀 있는 일정도, 표에 없는 일도 항목이 된다.
+ * 주간보고만이 아니라 회의자료, 사업계획, 검토보고서 등 일이 적혀 있는 문서면
+ * 무엇이든 받는다. 표에서 값을 옮기는 게 아니라 문서 전체를 읽고, 흩어져 있는
+ * 서술에서 "누가 언제까지 무엇을 한다"를 끌어내 시트 양식으로 정리한다.
+ * 문장 안에 묻혀 있는 일정도, 표에 없는 일도 항목이 된다.
  */
 
 // 시트 열 이름과 코드 안의 이름을 잇는 표. 스키마에 한글 키를 쓰면
@@ -42,19 +43,27 @@ const ItemSchema = z.object({
   owner: z.string().describe('대표자 이름. 문서에 없으면 빈 문자열'),
   phone: z.string().describe('전화번호. 문서에 적혀 있을 때만'),
   headcount: z.string().describe('작업인원 수. 문서에 적혀 있을 때만'),
-  evidence: z.string().describe('이 항목의 근거가 된 보고서의 원문 한 대목. 사람이 확인할 수 있게'),
+  evidence: z.string().describe('이 항목의 근거가 된 문서의 원문 한 대목. 사람이 확인할 수 있게'),
   confidence: z.enum(['high', 'medium', 'low']).describe('문서에 명시적이면 high, 추론했으면 low'),
+});
+
+const RejectedSchema = z.object({
+  text: z.string().describe('검토한 문서의 대목'),
+  reason: z.string().describe('왜 관리 항목이 아닌지 짧게'),
 });
 
 const ResultSchema = z.object({
   items: z.array(ItemSchema),
+  rejected: z.array(RejectedSchema).describe('항목이 될 만해 보였지만 제외한 것들. 사람이 판단을 되짚어볼 수 있게'),
   notes: z.string().describe('도출하면서 판단이 갈렸던 점이나 사람이 확인해야 할 것'),
 });
 
 export type DerivedItem = z.infer<typeof ItemSchema>;
+export type RejectedNote = z.infer<typeof RejectedSchema>;
 
 export interface DerivationResult {
   items: DerivedItem[];
+  rejected: RejectedNote[];
   notes: string;
   /** 어느 모델이 도출했는지. 폴백이 돌면 정확도가 달라지므로 화면에 보여준다. */
   model: string;
@@ -66,13 +75,13 @@ export function buildSystemPrompt(snap: SheetSnapshot | null, referenceDate: str
   const teams = snap?.teams ?? [];
   const existing = (snap?.rows ?? []).map(r => r['작업내용']).filter(Boolean);
 
-  return `당신은 주간업무보고를 읽고 팀의 작업 일정표를 만드는 업무 관리자입니다.
+  return `당신은 업무 문서를 읽고 팀의 작업 일정표를 만드는 업무 관리자입니다.
 
 ## 할 일
 
-보고서를 처음부터 끝까지 읽고, **관리해야 할 작업 항목을 전부 뽑아내십시오.**
+문서를 처음부터 끝까지 읽고, **관리해야 할 작업 항목을 전부 뽑아내십시오.**
 
-표에 정리된 것만 옮기는 게 아닙니다. 보고서의 서술 문장, 진행 경과, 계획,
+표에 정리된 것만 옮기는 게 아닙니다. 문서의 서술 문장, 진행 경과, 계획,
 협의 내용, 문제점과 대응 방안 어디에 묻혀 있든 "해야 할 일"이면 항목이 됩니다.
 
 예를 들어 이런 문장에서도 항목이 나옵니다:
@@ -106,7 +115,7 @@ export function buildSystemPrompt(snap: SheetSnapshot | null, referenceDate: str
 
 ## 지어내지 말 것
 
-전화번호, 대표자, 장소, 인원수는 **보고서에 적혀 있을 때만** 채우십시오.
+전화번호, 대표자, 장소, 인원수는 **문서에 적혀 있을 때만** 채우십시오.
 없으면 빈 문자열로 두십시오. 그럴듯한 값을 만들어 넣는 것이 빈칸보다 나쁩니다.
 
 ## 이미 등록된 작업
@@ -118,8 +127,19 @@ ${existing.length ? existing.map(t => `- ${t}`).join('\n') : '(없음)'}
 
 ## 근거
 
-항목마다 evidence에 그 근거가 된 보고서의 문장을 그대로 옮기십시오.
-사람이 검토할 때 어디서 나온 항목인지 확인해야 합니다.`;
+항목마다 evidence에 그 근거가 된 문서의 문장을 그대로 옮기십시오.
+사람이 검토할 때 어디서 나온 항목인지 확인해야 합니다.
+
+## 제외한 것도 남기십시오
+
+항목이 될까 검토했지만 제외한 대목은 rejected 에 남기십시오.
+무엇을 왜 뺐는지 사람이 되짚어볼 수 있어야 합니다.
+
+- 단순 현황이나 배경 설명이라 뺀 것
+- 이미 시트에 있어서 뺀 것
+- 너무 막연해서 일정을 잡을 수 없는 것
+
+문서의 모든 문장을 넣을 필요는 없습니다. **판단이 갈렸던 대목**만 남기십시오.`;
 }
 
 /** 시트에 넣을 수 있는 형태(한글 열 이름)로 바꾼다. */
@@ -151,7 +171,7 @@ export function dropDuplicates(items: DerivedItem[], snap: SheetSnapshot | null)
 async function deriveWithClaude(
   documentText: string,
   system: string,
-): Promise<{ items: DerivedItem[]; notes: string; model: string }> {
+): Promise<{ items: DerivedItem[]; rejected: RejectedNote[]; notes: string; model: string }> {
   const model = process.env.ACTIONITEM_MODEL ?? 'claude-opus-5';
   const client = new Anthropic();
 
@@ -168,7 +188,7 @@ async function deriveWithClaude(
     throw new Error(`모델이 응답을 거부했습니다: ${response.stop_details?.explanation ?? '사유 미상'}`);
   }
   if (response.stop_reason === 'max_tokens') {
-    throw new Error('항목이 너무 많아 응답이 잘렸습니다. 보고서를 나눠서 올려주세요.');
+    throw new Error('항목이 너무 많아 응답이 잘렸습니다. 문서를 나눠서 올려주세요.');
   }
   if (!response.parsed_output) {
     throw new Error('응답을 구조화하지 못했습니다.');
@@ -181,14 +201,14 @@ async function deriveWithClaude(
 async function deriveWithFallback(
   documentText: string,
   system: string,
-): Promise<{ items: DerivedItem[]; notes: string; model: string }> {
+): Promise<{ items: DerivedItem[]; rejected: RejectedNote[]; notes: string; model: string }> {
   const instruction = `${system}
 
 ## 출력 형식
 
 아래 형태의 JSON만 출력하십시오. 설명이나 코드블록 표시 없이 JSON 자체만.
 
-{"items":[{"task":"","status":"계획","startDate":"","endDate":"","category":"","team":"","startTime":"","durationHours":"","location":"","owner":"","phone":"","headcount":"","evidence":"","confidence":"high"}],"notes":""}`;
+{"items":[{"task":"","status":"계획","startDate":"","endDate":"","category":"","team":"","startTime":"","durationHours":"","location":"","owner":"","phone":"","headcount":"","evidence":"","confidence":"high"}],"rejected":[{"text":"","reason":""}],"notes":""}`;
 
   const res = await routedCall('fast', 'action_items', instruction, documentText);
 
@@ -209,7 +229,7 @@ export async function deriveActionItems(
 
   const system = buildSystemPrompt(snapshot, referenceDate);
 
-  let raw: { items: DerivedItem[]; notes: string; model: string };
+  let raw: { items: DerivedItem[]; rejected: RejectedNote[]; notes: string; model: string };
   if (process.env.ANTHROPIC_API_KEY) {
     raw = await deriveWithClaude(documentText, system);
   } else {
@@ -220,5 +240,5 @@ export async function deriveActionItems(
   const { kept, skipped } = dropDuplicates(raw.items, snapshot);
   console.log(`[액션아이템] ${raw.model} → ${kept.length}건 도출${skipped ? ` (중복 ${skipped}건 제외)` : ''}`);
 
-  return { items: kept, notes: raw.notes, model: raw.model, skipped };
+  return { items: kept, rejected: raw.rejected ?? [], notes: raw.notes, model: raw.model, skipped };
 }

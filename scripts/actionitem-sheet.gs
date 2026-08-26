@@ -36,6 +36,8 @@ function doGet(e) {
 
     return json_({
       ok: true,
+      sheetName: info.title,
+      sheetUrl: info.url,
       headers: info.headers,
       rows: rows,
       // 분류 값 목록. 대시보드가 이걸 씨앗으로 삼아 목록을 만든다.
@@ -76,7 +78,7 @@ function doPost(e) {
 
     sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, info.headers.length).setValues(rows);
 
-    return json_({ ok: true, added: rows.length });
+    return json_({ ok: true, added: rows.length, sheetName: info.title, sheetUrl: info.url });
   } catch (err) {
     return json_({ ok: false, error: String(err) });
   }
@@ -86,7 +88,8 @@ function doPost(e) {
 
 /** 헤더 행을 찾아 시트를 객체 배열로 읽는다. */
 function readSheet_() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) throw new Error('시트를 찾을 수 없습니다: ' + SHEET_NAME);
 
   const values = sheet.getDataRange().getValues();
@@ -112,7 +115,8 @@ function readSheet_() {
     rows.push(obj);
   }
 
-  return { sheet: sheet, headers: headers, rows: rows };
+  // 어느 시트에 넣었는지 화면에서 알려줘야 해서 이름과 주소도 같이 돌려준다
+  return { sheet: sheet, headers: headers, rows: rows, title: ss.getName(), url: ss.getUrl() };
 }
 
 /** 날짜 셀은 YYYY-MM-DD 문자열로 내보낸다 (JSON 으로 오갈 때 시간대에 흔들리지 않게). */

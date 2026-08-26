@@ -15,6 +15,9 @@ const SHEET_TOKEN = process.env.ACTIONITEM_SHEET_TOKEN;
 export type ActionItemRow = Record<string, string>;
 
 export interface SheetSnapshot {
+  /** 어느 시트에 들어가는지 화면에서 알려주기 위한 것 */
+  sheetName?: string;
+  sheetUrl?: string;
   headers: string[];
   rows: ActionItemRow[];
   /** 시트에서 실제로 쓰이고 있는 분류 값들 — 목록의 씨앗이 된다 */
@@ -58,12 +61,20 @@ export async function fetchSheet(limit?: number): Promise<SheetSnapshot> {
     categories: data.categories ?? [],
     teams: data.teams ?? [],
     statuses: data.statuses ?? [],
+    sheetName: data.sheetName,
+    sheetUrl: data.sheetUrl,
   };
 }
 
+export interface AppendResult {
+  added: number;
+  sheetName?: string;
+  sheetUrl?: string;
+}
+
 /** 새 행을 덧붙인다. */
-export async function appendRows(items: ActionItemRow[]): Promise<number> {
-  if (items.length === 0) return 0;
+export async function appendRows(items: ActionItemRow[]): Promise<AppendResult> {
+  if (items.length === 0) return { added: 0 };
 
   const res = await fetch(requireConfig(), {
     method: 'POST',
@@ -79,5 +90,5 @@ export async function appendRows(items: ActionItemRow[]): Promise<number> {
   });
 
   if (!data.ok) throw new Error(`시트 추가 실패: ${data.error}`);
-  return data.added ?? items.length;
+  return { added: data.added ?? items.length, sheetName: data.sheetName, sheetUrl: data.sheetUrl };
 }

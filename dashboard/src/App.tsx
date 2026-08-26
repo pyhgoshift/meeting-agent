@@ -123,6 +123,8 @@ function App() {
 
   const isEditor = activeTab !== 'status';
   const canSave = activeTab === 'prompt' || activeTab === 'slack';
+  // 액션아이템 카드에는 값이 11개씩 들어가서 좁으면 한글이 글자마다 줄바꿈된다
+  const wide = activeTab === 'actionitems';
   const currentValue = activeTab === 'prompt' ? config.prompt : activeTab === 'slack' ? config.slackTemplate : config.env;
 
   return (
@@ -166,7 +168,7 @@ function App() {
         </motion.header>
 
         <div className="grid grid-cols-12 gap-6">
-          <div className="col-span-3 space-y-2">
+          <div className={`${wide ? 'col-span-2' : 'col-span-3'} space-y-2`}>
             <TabButton 
               active={activeTab === 'status'} 
               onClick={() => setActiveTab('status')}
@@ -219,8 +221,8 @@ function App() {
               active={activeTab === 'actionitems'}
               onClick={() => setActiveTab('actionitems')}
               icon={<ClipboardList className="w-5 h-5" />}
-              title="액션아이템"
-              subtitle="주간보고 → 구글 시트"
+              title="액션아이템 추출"
+              subtitle="업무 문서 → 구글 시트"
             />
             <TabButton 
               active={activeTab === 'prompt'} 
@@ -249,14 +251,14 @@ function App() {
             key={activeTab}
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="col-span-9"
+            className={wide ? 'col-span-10' : 'col-span-9'}
           >
-            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl h-[75vh] flex flex-col">
+            <div className={`bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 shadow-2xl flex flex-col ${wide ? 'h-[82vh]' : 'h-[75vh]'}`}>
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
                   {activeTab === 'status' && '📊 모니터링 대시보드'}
                   {activeTab === 'pending' && '📝 검토 대기 (전송 전)'}
-                  {activeTab === 'actionitems' && '📋 액션아이템 도출'}
+                  {activeTab === 'actionitems' && '📋 액션아이템 추출'}
                   {activeTab === 'prompt' && '🧠 프롬프트 에디터'}
                   {activeTab === 'slack' && '🎨 슬랙 템플릿 에디터'}
                   {activeTab === 'env' && '⚙️ 환경설정 뷰어 (읽기 전용)'}

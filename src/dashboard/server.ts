@@ -7,6 +7,11 @@ import { getWatcherStatus } from '../collector/watcher.js';
 export function startDashboardServer(port: number = 3000) {
   const app = express();
   
+  // 액션아이템 분석은 문서 전문을 그대로 받는다. 아래 전역 제한이 먼저 걸리면
+  // 긴 문서가 413 으로 튕기므로, 이 경로만 앞에서 넉넉하게 파싱한다.
+  // (먼저 파싱해두면 뒤의 전역 파서는 이미 처리된 요청을 그냥 지나간다.)
+  app.use('/api/actionitems/derive', express.json({ limit: '8mb' }));
+
   // Body parsing limit
   app.use(express.json({ limit: '256kb' }));
 

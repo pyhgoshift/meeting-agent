@@ -305,6 +305,8 @@ dashboardRouter.get('/actionitems/sheet', async (_req: Request, res: Response) =
         categories: snap.categories,
         teams: snap.teams,
         statuses: snap.statuses,
+        sheetName: snap.sheetName,
+        sheetUrl: snap.sheetUrl,
       },
     });
   } catch (error) {
@@ -313,14 +315,18 @@ dashboardRouter.get('/actionitems/sheet', async (_req: Request, res: Response) =
 });
 
 /**
- * 문서를 받아 액션아이템을 도출한다. 시트에는 아직 쓰지 않는다.
+ * 1단계 — 문서에서 글자만 뽑는다.
+ *
+ * 도출과 나눠 둔 이유는 화면 때문이다. 한 번에 처리하면 1~2분 동안 아무 소식이 없어
+ * 멈춘 것처럼 보인다. 여기서 먼저 "몇 쪽, 몇 자를 읽었다"를 돌려주면 그다음 분석이
+ * 도는 동안에도 무슨 일이 벌어지는지 보인다.
  *
  * 본문은 파일 그대로(raw)이고 파일명은 쿼리로 받는다. JSON 에 base64 로 실으면
  * 용량이 3분의 4로 부풀고, 그것 때문에 전역 본문 제한을 올리면 다른 라우트까지
  * 큰 요청을 받게 된다. 여기서만 크게 열어둔다.
  */
 dashboardRouter.post(
-  '/actionitems/derive',
+  '/actionitems/extract',
   express.raw({ type: () => true, limit: '25mb' }),
   async (req: Request, res: Response) => {
     const fileName = String(req.query.fileName ?? '').trim();
@@ -349,34 +355,60 @@ dashboardRouter.post(
 
     try {
       fs.writeFileSync(tmp, req.body);
-
-      console.log(`📄 [액션아이템] ${fileName} 분석 시작 — ${accessUser(req)}`);
+      console.log(`📄 [액션아이템] ${fileName} 읽는 중 — ${accessUser(req)}`);
       const doc = await extractDocumentText(tmp);
 
+      if (!doc.text.trim()) {
+        throw new Error('문서에서 글자를 찾지 못했습니다. 스캔한 이미지 문서일 수 있습니다.');
+      }
+
+      console.log(`📄 [액션아이템] ${fileName} — ${doc.format}, ${doc.pages ?? '?'}쪽, ${doc.text.length}자`);
+      res.json({
+        success: true,
+        data: { fileName, format: doc.format, pages: doc.pages, text: doc.text },
+      });
+    } catch (error) {
+      console.error(`❌ [액션아이템] ${fileName} 읽기 실패: ${(error as Error).message}`);
+      res.status(500).json({ success: false, error: (error as Error).message });
+    } finally {
+      fs.rmSync(tmp, { force: true });
+    }
+  },
+);
+
+/** 2단계 — 뽑아낸 글자에서 액션아이템을 도출한다. 시트에는 아직 쓰지 않는다. */
+dashboardRouter.post(
+  '/actionitems/derive',
+  express.json({ limit: '8mb' }),   // 문서 전문이 그대로 돌아온다 — 기본 256kb 로는 모자란다
+  async (req: Request, res: Response) => {
+    const text = String(req.body?.text ?? '');
+    if (!text.trim()) {
+      res.status(400).json({ success: false, error: '분석할 내용이 없습니다.' });
+      return;
+    }
+
+    try {
       const snapshot = isSheetConfigured() ? await fetchSheet() : null;
-      const result = await deriveActionItems(doc.text, snapshot);
+      const result = await deriveActionItems(text, snapshot);
 
       res.json({
         success: true,
         data: {
-          fileName,
-          format: doc.format,
-          pages: doc.pages,
-          textLength: doc.text.length,
           model: result.model,
           skipped: result.skipped,
           notes: result.notes,
           items: result.items,
+          rejected: result.rejected,
           categories: snapshot?.categories ?? [],
           teams: snapshot?.teams ?? [],
           statuses: snapshot?.statuses ?? [],
+          sheetName: snapshot?.sheetName,
+          sheetUrl: snapshot?.sheetUrl,
         },
       });
     } catch (error) {
-      console.error(`❌ [액션아이템] ${fileName} 실패: ${(error as Error).message}`);
+      console.error(`❌ [액션아이템] 도출 실패: ${(error as Error).message}`);
       res.status(500).json({ success: false, error: (error as Error).message });
-    } finally {
-      fs.rmSync(tmp, { force: true });
     }
   },
 );
@@ -396,9 +428,9 @@ dashboardRouter.post('/actionitems/commit', async (req: Request, res: Response) 
   try {
     // 화면이 보내오는 건 이미 시트 열 이름을 쓰는 객체다. 근거·신뢰도처럼 검토용으로만
     // 쓰인 필드가 섞여 들어오면 시트가 모르는 열이라 무시되므로 따로 거르지 않는다.
-    const added = await appendRows(items);
-    console.log(`📊 [액션아이템] ${added}건 시트에 추가 — ${accessUser(req)}`);
-    res.json({ success: true, data: { added } });
+    const result = await appendRows(items);
+    console.log(`📊 [액션아이템] ${result.added}건 → ${result.sheetName ?? '시트'} — ${accessUser(req)}`);
+    res.json({ success: true, data: result });
   } catch (error) {
     console.error(`❌ [액션아이템] 시트 추가 실패: ${(error as Error).message}`);
     res.status(502).json({ success: false, error: (error as Error).message });
